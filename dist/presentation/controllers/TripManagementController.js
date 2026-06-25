@@ -24,6 +24,13 @@ router.post('/', async (req, res, next) => {
             return res.status(409).json({ error: error.message });
         if (error.message?.includes('no encontrad'))
             return res.status(404).json({ error: error.message });
+        if (error.message?.includes('futuro') || error.message?.includes('fecha'))
+            return res.status(400).json({ error: error.message });
+        if (error.message?.includes('inactivo'))
+            return res.status(400).json({ error: error.message });
+        // Para cualquier otro error de negocio, devolver 400 con el mensaje real
+        if (error.message)
+            return res.status(400).json({ error: error.message });
         next(error);
     }
 });

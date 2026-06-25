@@ -57,6 +57,10 @@ __decorate([
     __metadata("design:type", Number)
 ], VehicleEntity.prototype, "capacity", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'image_url', type: 'varchar', length: 500, nullable: true }),
+    __metadata("design:type", String)
+], VehicleEntity.prototype, "imageUrl", void 0);
+__decorate([
     (0, typeorm_1.Column)({ name: 'is_active', type: 'boolean', default: true }),
     __metadata("design:type", Boolean)
 ], VehicleEntity.prototype, "isActive", void 0);

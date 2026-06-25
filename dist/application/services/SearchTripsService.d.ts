@@ -3,6 +3,8 @@ export interface SearchTripsDTO {
     originCity?: string;
     destinationCity?: string;
     travelDate?: Date;
+    companyId?: string;
+    vehicleType?: string;
     page?: number;
     limit?: number;
 }

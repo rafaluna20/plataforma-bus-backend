@@ -95,6 +95,7 @@ class VehicleService {
             serviceMode: data.serviceMode,
             seatTemplate,
             capacity: data.capacity,
+            imageUrl: data.imageUrl || null,
         });
         return this.repo.save(vehicle);
     }

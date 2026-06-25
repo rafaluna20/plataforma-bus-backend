@@ -25,19 +25,35 @@ class SearchTripsService {
             }
         }
         // Si no hay parámetros de búsqueda, retornar los próximos viajes disponibles
+        // (opcionalmente filtrados por empresa y/o tipo de vehículo)
         if (!originCity || !destinationCity || !travelDate) {
-            const [trips, total] = await tripRepository.findAndCount({
-                where: { status: TripEntity_1.TripStatus.SCHEDULED },
-                relations: {
-                    route: {
-                        company: true,
-                        waypoints: { station: true },
-                    },
-                    vehicle: true,
-                },
-                order: { departureTime: 'ASC' },
-                skip,
-                take: limit,
+            const qb = tripRepository
+                .createQueryBuilder('trip')
+                .innerJoinAndSelect('trip.route', 'route')
+                .innerJoinAndSelect('route.company', 'company')
+                .innerJoinAndSelect('route.waypoints', 'allWaypoints')
+                .innerJoinAndSelect('allWaypoints.station', 'allStations')
+                .innerJoinAndSelect('trip.vehicle', 'vehicle')
+                .where('trip.status IN (:...statuses)', {
+                statuses: [TripEntity_1.TripStatus.SCHEDULED, TripEntity_1.TripStatus.BOARDING],
+            })
+                .andWhere('trip.departure_time >= :now', { now: new Date() })
+                .orderBy('trip.departure_time', 'ASC')
+                .skip(skip)
+                .take(limit);
+            // Filtro por empresa
+            if (params.companyId) {
+                qb.andWhere('company.id = :companyId', { companyId: params.companyId });
+            }
+            // Filtro por tipo de vehículo
+            if (params.vehicleType) {
+                qb.andWhere('vehicle.vehicle_type = :vehicleType', { vehicleType: params.vehicleType });
+            }
+            const [trips, total] = await qb.getManyAndCount();
+            trips.forEach(trip => {
+                if (trip.route?.waypoints) {
+                    trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
+                }
             });
             return {
                 data: trips,

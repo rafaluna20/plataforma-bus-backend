@@ -12,9 +12,9 @@ const router = (0, express_1.Router)();
 const authService = new AuthService_1.AuthService();
 // Rate limiting estricto para endpoints de autenticación
 const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 10, // máximo 10 intentos por IP
-    message: { error: 'Demasiados intentos de autenticación. Intenta de nuevo en 15 minutos.' },
+    windowMs: 5 * 60 * 1000, // 5 minutos
+    max: 15, // máximo 15 intentos por IP
+    message: { error: 'Demasiados intentos de autenticación. Intenta de nuevo en 5 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
 });

@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const SearchTripsService_1 = require("../../application/services/SearchTripsService");
@@ -13,7 +46,7 @@ const searchTripsService = new SearchTripsService_1.SearchTripsService();
  */
 router.get('/search', async (req, res, next) => {
     try {
-        const { origin, destination, date, page, limit } = req.query;
+        const { origin, destination, date, page, limit, companyId, vehicleType } = req.query;
         let travelDate;
         if (date) {
             let dateString = date;
@@ -29,6 +62,8 @@ router.get('/search', async (req, res, next) => {
             originCity: origin,
             destinationCity: destination,
             travelDate,
+            companyId: companyId,
+            vehicleType: vehicleType,
             page: page ? parseInt(page) : 1,
             limit: limit ? parseInt(limit) : 15,
         });
@@ -39,6 +74,51 @@ router.get('/search', async (req, res, next) => {
             totalPages: results.totalPages,
             trips: results.data,
         });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+/**
+ * GET /api/v1/trips/:tripId
+ * Retorna el detalle completo de un viaje (ruta, vehículo, empresa, asientos ocupados).
+ * Endpoint público — no requiere autenticación.
+ */
+router.get('/:tripId', async (req, res, next) => {
+    try {
+        const { tripId } = req.params;
+        const tripRepo = data_source_1.AppDataSource.getRepository((await Promise.resolve().then(() => __importStar(require('../../infrastructure/database/entities/TripEntity')))).TripEntity);
+        const bookingRepo = data_source_1.AppDataSource.getRepository(BookingEntity_1.BookingEntity);
+        const trip = await tripRepo
+            .createQueryBuilder('trip')
+            .innerJoinAndSelect('trip.route', 'route')
+            .innerJoinAndSelect('route.company', 'company')
+            .innerJoinAndSelect('route.waypoints', 'waypoints')
+            .innerJoinAndSelect('waypoints.station', 'station')
+            .innerJoinAndSelect('trip.vehicle', 'vehicle')
+            .where('trip.id = :tripId', { tripId })
+            .getOne();
+        if (!trip) {
+            return res.status(404).json({ error: 'Viaje no encontrado' });
+        }
+        // Ordenar waypoints
+        if (trip.route?.waypoints) {
+            trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
+        }
+        // Obtener asientos ocupados (activos)
+        const activeStatuses = [
+            BookingEntity_1.PaymentStatus.PENDING_CASH,
+            BookingEntity_1.PaymentStatus.PAID_DIGITAL,
+            BookingEntity_1.PaymentStatus.PAID,
+        ];
+        const bookings = await bookingRepo
+            .createQueryBuilder('b')
+            .select(['b.seat_id', 'b.payment_status'])
+            .where('b.trip_id = :tripId', { tripId })
+            .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
+            .getMany();
+        const occupiedSeats = bookings.map((b) => b.seatId);
+        return res.status(200).json({ trip, occupiedSeats });
     }
     catch (error) {
         next(error);

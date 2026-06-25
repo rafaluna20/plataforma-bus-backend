@@ -17,6 +17,7 @@ const RouteController_1 = __importDefault(require("./controllers/RouteController
 const TripManagementController_1 = __importDefault(require("./controllers/TripManagementController"));
 const AdminController_1 = __importDefault(require("./controllers/AdminController"));
 const PaymentController_1 = __importDefault(require("./controllers/PaymentController"));
+const CompanyBrandingController_1 = __importDefault(require("./controllers/CompanyBrandingController"));
 // Middlewares
 const auth_middleware_1 = require("./middlewares/auth.middleware");
 const UserEntity_1 = require("../infrastructure/database/entities/UserEntity");
@@ -108,6 +109,8 @@ class App {
         this.express.use('/api/v1/management/trips', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(UserEntity_1.UserRole.ADMIN, UserEntity_1.UserRole.SUPER_ADMIN, UserEntity_1.UserRole.DRIVER), TripManagementController_1.default);
         // ADMIN PANEL: Gestión de usuarios y roles (SUPER_ADMIN + ADMIN)
         this.express.use('/api/v1/admin', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(UserEntity_1.UserRole.SUPER_ADMIN, UserEntity_1.UserRole.ADMIN), AdminController_1.default);
+        // BRANDING: Endpoints públicos (slug, public) + protegidos (me)
+        this.express.use('/api/v1/branding', CompanyBrandingController_1.default);
     }
     errorHandling() {
         // 404 handler

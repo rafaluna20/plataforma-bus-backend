@@ -17,6 +17,7 @@ export declare class VehicleEntity {
     serviceMode: ServiceMode;
     seatTemplate: any;
     capacity: number;
+    imageUrl: string | null;
     isActive: boolean;
     createdAt: Date;
 }

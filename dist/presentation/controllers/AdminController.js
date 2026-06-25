@@ -125,6 +125,44 @@ router.patch('/users/:id/status', async (req, res, next) => {
     }
 });
 /**
+ * PATCH /api/v1/admin/users/:id/activate
+ * Activar una cuenta de usuario (alias conveniente para el panel).
+ * Solo SUPER_ADMIN puede ejecutar este endpoint.
+ */
+router.patch('/users/:id/activate', async (req, res, next) => {
+    try {
+        const userId = req.params.id;
+        const result = await adminService.toggleUserStatus(userId, true);
+        return res.status(200).json(result);
+    }
+    catch (error) {
+        if (error.message?.includes('no encontrado'))
+            return res.status(404).json({ error: error.message });
+        if (error.message?.includes('SUPER_ADMIN'))
+            return res.status(403).json({ error: error.message });
+        next(error);
+    }
+});
+/**
+ * PATCH /api/v1/admin/users/:id/deactivate
+ * Desactivar una cuenta de usuario (alias conveniente para el panel).
+ * Solo SUPER_ADMIN puede ejecutar este endpoint.
+ */
+router.patch('/users/:id/deactivate', async (req, res, next) => {
+    try {
+        const userId = req.params.id;
+        const result = await adminService.toggleUserStatus(userId, false);
+        return res.status(200).json(result);
+    }
+    catch (error) {
+        if (error.message?.includes('no encontrado'))
+            return res.status(404).json({ error: error.message });
+        if (error.message?.includes('SUPER_ADMIN'))
+            return res.status(403).json({ error: error.message });
+        next(error);
+    }
+});
+/**
  * GET /api/v1/admin/users
  * Listar todos los usuarios con paginación y filtros.
  * SUPER_ADMIN ve todos. ADMIN solo ve usuarios de su empresa.

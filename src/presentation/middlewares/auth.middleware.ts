@@ -4,7 +4,15 @@ import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { TokenPayload } from '../../application/services/AuthService';
 import { logger } from '../../infrastructure/logger';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET_IN_PRODUCTION';
+// ─── SEGURIDAD: El servidor NO puede arrancar sin JWT_SECRET configurado ──────
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error(
+        '[FATAL] JWT_SECRET no está configurado en las variables de entorno. ' +
+        'El servidor no puede arrancar de forma segura. ' +
+        'Configura JWT_SECRET en tu archivo .env'
+    );
+}
 
 // Extender el tipo Request de Express para incluir el usuario autenticado
 declare global {

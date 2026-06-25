@@ -1,15 +1,19 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookingService } from '../../application/services/BookingService';
+import { authenticate } from '../middlewares/auth.middleware';
+import { MockPaymentAdapter } from '../../infrastructure/payments/MockPaymentAdapter';
 
 const router = Router();
 const bookingService = new BookingService();
+const paymentAdapter = new MockPaymentAdapter();
 
 /**
  * POST /api/v1/bookings
  * Crea una reserva al contado para un asiento específico en un viaje.
+ * ✅ REQUIERE autenticación (ADMIN, SUPER_ADMIN o DRIVER en mostrador)
  * Body: { tripId, passengerName, passengerDocType, passengerDocNum, startWaypointId, endWaypointId, seatId }
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const {
             tripId,
@@ -28,6 +32,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             });
         }
 
+        // Pasar el userId del usuario autenticado para trazabilidad
         const booking = await bookingService.createCashBooking({
             tripId,
             passengerName,
@@ -36,6 +41,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             startWaypointId,
             endWaypointId,
             seatId,
+            userId: req.user?.sub,
         });
 
         return res.status(201).json({
@@ -49,8 +55,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             },
         });
     } catch (error: any) {
-        // Manejar errores de negocio (Ej. asiento ocupado) con 409 Conflict
-        if (error.message && error.message.includes('ocupado')) {
+        if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
         if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
@@ -63,11 +68,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 /**
  * POST /api/v1/bookings/digital
  * Crea una reserva digital y cobra instantáneamente (Tarjeta, Yape, Plin).
+ * ✅ REQUIERE autenticación
  */
-import { MockPaymentAdapter } from '../../infrastructure/payments/MockPaymentAdapter';
-const paymentAdapter = new MockPaymentAdapter();
-
-router.post('/digital', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/digital', authenticate, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const {
             tripId,
@@ -77,24 +80,29 @@ router.post('/digital', async (req: Request, res: Response, next: NextFunction) 
             startWaypointId,
             endWaypointId,
             seatId,
-            paymentDetails // { method, token, phoneNumber }
+            paymentDetails, // { method, token, phoneNumber }
         } = req.body;
 
-        if (!tripId || !passengerName || !passengerDocType || !passengerDocNum || !startWaypointId || !endWaypointId || !seatId || !paymentDetails || !paymentDetails.method) {
+        if (!tripId || !passengerName || !passengerDocType || !passengerDocNum || !startWaypointId || !endWaypointId || !seatId || !paymentDetails?.method) {
             return res.status(400).json({
                 error: 'Faltan campos requeridos incluyendo paymentDetails con el método.',
             });
         }
 
-        const booking = await bookingService.createDigitalBooking({
-            tripId,
-            passengerName,
-            passengerDocType,
-            passengerDocNum,
-            startWaypointId,
-            endWaypointId,
-            seatId,
-        }, paymentAdapter, paymentDetails);
+        const booking = await bookingService.createDigitalBooking(
+            {
+                tripId,
+                passengerName,
+                passengerDocType,
+                passengerDocNum,
+                startWaypointId,
+                endWaypointId,
+                seatId,
+                userId: req.user?.sub,
+            },
+            paymentAdapter,
+            paymentDetails
+        );
 
         return res.status(201).json({
             message: 'Pago procesado y reserva creada exitosamente',
@@ -109,11 +117,11 @@ router.post('/digital', async (req: Request, res: Response, next: NextFunction) 
             },
         });
     } catch (error: any) {
-        if (error.message && error.message.includes('ocupado')) {
+        if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
-        if (error.message && error.message.includes('Pago rechazado')) {
-            return res.status(402).json({ error: error.message }); // 402 Payment Required
+        if (error.message?.includes('Pago rechazado')) {
+            return res.status(402).json({ error: error.message });
         }
         if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
             return res.status(400).json({ error: error.message });
@@ -122,4 +130,25 @@ router.post('/digital', async (req: Request, res: Response, next: NextFunction) 
     }
 });
 
+/**
+ * GET /api/v1/bookings/my
+ * Obtiene las reservas del usuario autenticado.
+ * ✅ REQUIERE autenticación (aplicada a nivel de router en app.ts)
+ */
+router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.user?.sub;
+        if (!userId) {
+            return res.status(401).json({ error: 'No autorizado' });
+        }
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const result = await bookingService.getMyBookings(userId, page, limit);
+        return res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;
+

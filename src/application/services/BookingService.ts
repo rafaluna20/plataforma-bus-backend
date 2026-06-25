@@ -206,7 +206,7 @@ export class BookingService {
         const skip = (page - 1) * limit;
 
         const [bookings, total] = await bookingRepo.findAndCount({
-            where: { trip: { id: userId } }, // Nota: en producción agregar userId a BookingEntity
+            where: { user: { id: userId } },
             relations: {
                 trip: { route: { company: true }, vehicle: true },
                 startWaypoint: { station: true },

@@ -43,10 +43,7 @@ class App {
     }
 
     private middlewares(): void {
-        // Rate limiting global
-        this.express.use(globalLimiter);
-
-        // CORS configurado correctamente
+        // 1. CORS configurado correctamente (SIEMPRE antes del rate limiter)
         const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(',');
         this.express.use(cors({
             origin: (origin, callback) => {
@@ -66,6 +63,9 @@ class App {
             allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
             credentials: true, // Necesario para cookies HttpOnly
         }));
+
+        // 2. Rate limiting global
+        this.express.use(globalLimiter);
 
         // Parseo de cookies (para refresh token HttpOnly)
         this.express.use(cookieParser());

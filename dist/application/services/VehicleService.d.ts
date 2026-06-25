@@ -6,12 +6,14 @@ export interface CreateVehicleDTO {
     serviceMode: ServiceMode;
     seatTemplate: any;
     capacity: number;
+    imageUrl?: string;
 }
 export interface UpdateVehicleDTO {
     serviceMode?: ServiceMode;
     seatTemplate?: any;
     capacity?: number;
     isActive?: boolean;
+    imageUrl?: string;
 }
 export declare class VehicleService {
     private get repo();

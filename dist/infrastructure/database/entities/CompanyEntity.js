@@ -39,6 +39,50 @@ __decorate([
     __metadata("design:type", Boolean)
 ], CompanyEntity.prototype, "isActive", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 80, unique: true, nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "slug", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'logo_url', type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "logoUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'primary_color', type: 'varchar', length: 7, nullable: true, default: '#6366f1' }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "primaryColor", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'secondary_color', type: 'varchar', length: 7, nullable: true, default: '#8b5cf6' }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "secondaryColor", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'banner_url', type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "bannerUrl", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 20, nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "phone", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "address", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 100, nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "city", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 255, nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "website", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "description", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'contact_email', type: 'varchar', length: 150, nullable: true }),
+    __metadata("design:type", String)
+], CompanyEntity.prototype, "contactEmail", void 0);
+__decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at', type: 'timestamp with time zone' }),
     __metadata("design:type", Date)
 ], CompanyEntity.prototype, "createdAt", void 0);

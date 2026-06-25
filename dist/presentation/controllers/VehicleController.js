@@ -10,14 +10,14 @@ const vehicleService = new VehicleService_1.VehicleService();
  */
 router.post('/', async (req, res, next) => {
     try {
-        const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity } = req.body;
+        const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl } = req.body;
         if (!companyId || !plateNumber || !vehicleType || !serviceMode || !capacity) {
             return res.status(400).json({
                 error: 'Campos requeridos: companyId, plateNumber, vehicleType, serviceMode, capacity',
             });
         }
         const vehicle = await vehicleService.create({
-            companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity,
+            companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl,
         });
         return res.status(201).json({ message: 'Vehículo registrado exitosamente', vehicle });
     }
