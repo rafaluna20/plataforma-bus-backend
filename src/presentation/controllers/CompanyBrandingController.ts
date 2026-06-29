@@ -35,6 +35,21 @@ router.get('/slug/:slug', async (req: Request, res: Response, next: NextFunction
 });
 
 /**
+ * GET /api/v1/branding/id/:id
+ * Obtener branding de una empresa por ID (sin auth — fallback cuando slug no está configurado)
+ */
+router.get('/id/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const company = await brandingService.getById(id);
+        return res.status(200).json({ company });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
  * GET /api/v1/branding/me
  * Obtener branding de la empresa del admin logueado
  */
@@ -61,11 +76,11 @@ router.patch('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN
         if (!companyId) return res.status(400).json({ error: 'No tienes empresa asignada' });
 
         const { slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-                phone, address, city, website, description, contactEmail } = req.body;
+                phone, address, city, website, description, contactEmail, sliderImages } = req.body;
 
         const updated = await brandingService.updateBranding({
             companyId, slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-            phone, address, city, website, description, contactEmail,
+            phone, address, city, website, description, contactEmail, sliderImages,
         });
 
         return res.status(200).json({ message: 'Branding actualizado exitosamente', company: updated });
@@ -83,11 +98,11 @@ router.patch('/:companyId', authenticate, authorize(UserRole.SUPER_ADMIN), async
     try {
         const companyId = Array.isArray(req.params.companyId) ? req.params.companyId[0] : req.params.companyId;
         const { slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-                phone, address, city, website, description, contactEmail } = req.body;
+                phone, address, city, website, description, contactEmail, sliderImages } = req.body;
 
         const updated = await brandingService.updateBranding({
             companyId, slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-            phone, address, city, website, description, contactEmail,
+            phone, address, city, website, description, contactEmail, sliderImages,
         });
 
         return res.status(200).json({ message: 'Branding actualizado exitosamente', company: updated });

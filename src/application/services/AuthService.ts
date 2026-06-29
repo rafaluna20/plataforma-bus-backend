@@ -44,6 +44,7 @@ export interface AuthTokens {
         role: UserRole;
         balance: number;
         companyId?: string;
+        station?: { id: string; name: string; city: string } | null;
     };
 }
 
@@ -101,7 +102,7 @@ export class AuthService {
     public async login(data: LoginDTO): Promise<AuthTokens> {
         const user = await this.userRepo.findOne({
             where: { email: data.email.toLowerCase() },
-            relations: { company: true },
+            relations: { company: true, station: true },
         });
 
         if (!user) {
@@ -137,7 +138,7 @@ export class AuthService {
             try {
                 user = await this.userRepo.findOne({
                     where: { id: payload.sub },
-                    relations: { company: true },
+                    relations: { company: true, station: true },
                 });
                 lastError = null;
                 break; // Éxito — salir del loop
@@ -179,7 +180,7 @@ export class AuthService {
     public async getProfile(userId: string) {
         const user = await this.userRepo.findOne({
             where: { id: userId },
-            relations: { company: true },
+            relations: { company: true, station: true },
         });
         if (!user) throw new Error('Usuario no encontrado');
 
@@ -193,6 +194,7 @@ export class AuthService {
             docNum: user.docNum,
             phone: user.phone,
             company: user.company ? { id: user.company.id, name: user.company.tradeName } : null,
+            station: user.station ? { id: user.station.id, name: user.station.name, city: user.station.city } : null,
             createdAt: user.createdAt,
         };
     }
@@ -233,6 +235,7 @@ export class AuthService {
                 role: user.role,
                 balance: Number(user.balance),
                 companyId: user.company?.id,
+                station: user.station ? { id: user.station.id, name: user.station.name, city: user.station.city } : null,
             },
         };
     }

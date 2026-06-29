@@ -2,6 +2,17 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import { randomUUID } from 'crypto';
+
+// Extender Express Request para incluir Correlation ID
+declare global {
+    namespace Express {
+        interface Request {
+            correlationId?: string;
+        }
+    }
+}
+
 
 // Controllers
 import authRoutes from './controllers/AuthController';
@@ -14,6 +25,7 @@ import tripMgmtRoutes from './controllers/TripManagementController';
 import adminRoutes from './controllers/AdminController';
 import paymentRoutes from './controllers/PaymentController';
 import brandingRoutes from './controllers/CompanyBrandingController';
+import parcelRoutes from './controllers/ParcelController';
 
 // Middlewares
 import { authenticate, authorize } from './middlewares/auth.middleware';
@@ -44,19 +56,19 @@ class App {
 
     private middlewares(): void {
         // 1. CORS configurado correctamente (SIEMPRE antes del rate limiter)
-        const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(',');
+        const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(',').map(o => o.trim());
         this.express.use(cors({
             origin: (origin, callback) => {
                 // Permitir peticiones sin origin (ej. Postman, mobile apps)
                 if (!origin) return callback(null, true);
+                // En desarrollo, permitir cualquier localhost sin warnings
+                if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+                    return callback(null, true);
+                }
                 if (allowedOrigins.includes(origin)) {
                     return callback(null, true);
                 }
                 logger.warn(`CORS bloqueado para origen: ${origin}`);
-                // En desarrollo, permitir cualquier localhost
-                if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
-                    return callback(null, true);
-                }
                 return callback(new Error(`Origen ${origin} no permitido por CORS`));
             },
             methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -74,6 +86,14 @@ class App {
         this.express.use(express.json({ limit: '10mb' }));
         this.express.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+        // Middleware de Correlation ID
+        this.express.use((req: Request, res: Response, next: NextFunction) => {
+            const correlationId = (req.header('x-correlation-id') || randomUUID()) as string;
+            req.correlationId = correlationId;
+            res.setHeader('x-correlation-id', correlationId);
+            next();
+        });
+
         // Logging de peticiones HTTP
         this.express.use((req: Request, res: Response, next: NextFunction) => {
             const start = Date.now();
@@ -83,6 +103,7 @@ class App {
                 logger[level](`${req.method} ${req.path} ${res.statusCode} - ${duration}ms`, {
                     ip: req.ip,
                     userAgent: req.get('user-agent'),
+                    correlationId: req.correlationId,
                 });
             });
             next();
@@ -148,6 +169,14 @@ class App {
             adminRoutes
         );
 
+        // ENCOMIENDAS: Gestión de paquetes/encomiendas por viaje (ADMIN, SUPER_ADMIN)
+        this.express.use(
+            '/api/v1/parcels',
+            authenticate,
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+            parcelRoutes
+        );
+
         // BRANDING: Endpoints públicos (slug, public) + protegidos (me)
         this.express.use('/api/v1/branding', brandingRoutes);
     }
@@ -164,12 +193,14 @@ class App {
                 stack: err.stack,
                 path: req.path,
                 method: req.method,
+                correlationId: req.correlationId,
             });
 
             // No exponer detalles internos en producción
             res.status(500).json({
                 error: 'Internal Server Error',
                 message: process.env.NODE_ENV === 'development' ? err.message : 'Ocurrió un error inesperado.',
+                correlationId: req.correlationId, // Devolver ID de tracking al cliente para reporte de bugs
             });
         });
     }

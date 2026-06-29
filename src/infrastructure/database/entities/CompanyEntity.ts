@@ -42,6 +42,10 @@ export class CompanyEntity {
     @Column({ name: 'banner_url', type: 'text', nullable: true })
     bannerUrl: string | null;
 
+    /** Imágenes para el carrusel principal (slider) de la página pública */
+    @Column({ name: 'slider_images', type: 'simple-array', nullable: true })
+    sliderImages: string[] | null;
+
     // ─── Datos de Contacto ────────────────────────────────────────────────────
 
     /** Teléfono principal de la empresa */

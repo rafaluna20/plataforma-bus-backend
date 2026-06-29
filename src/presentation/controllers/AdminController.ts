@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { AdminService } from '../../application/services/AdminService';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { validateBody, validateQuery } from '../validators/schemas';
+import { AuditLogService } from '../../application/services/AuditLogService';
+
 
 const router = Router();
 const adminService = new AdminService();
@@ -14,6 +16,7 @@ const CreateStaffSchema = z.object({
     email: z.string().email().toLowerCase(),
     password: z.string().min(8).max(100),
     companyId: z.string().uuid('companyId debe ser un UUID válido'),
+    stationId: z.string().uuid('stationId debe ser un UUID válido').optional(),
     docType: z.enum(['DNI', 'CE', 'PASAPORTE', 'RUC']).optional(),
     docNum: z.string().min(6).max(20).optional(),
     phone: z.string().regex(/^[0-9+\-\s()]{7,20}$/).optional(),
@@ -73,6 +76,30 @@ router.post('/users/driver', validateBody(CreateStaffSchema), async (req: Reques
     } catch (error: any) {
         if (error.message?.includes('Ya existe')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
+ * POST /api/v1/admin/users/seller
+ * Crear un usuario con rol AGENCY_SELLER (vendedor) vinculado a una empresa y opcionalmente a un paradero.
+ * SUPER_ADMIN o ADMIN de la empresa pueden ejecutar este endpoint.
+ */
+router.post('/users/seller', validateBody(CreateStaffSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        // Si es ADMIN (no SUPER_ADMIN), solo puede crear vendedores de su propia empresa
+        if (req.user?.role === UserRole.ADMIN && req.user.companyId !== req.body.companyId) {
+            return res.status(403).json({ error: 'Solo puedes crear vendedores para tu propia empresa' });
+        }
+
+        const user = await adminService.createSeller(req.body);
+        return res.status(201).json({
+            message: 'Usuario SELLER creado exitosamente',
+            user,
+        });
+    } catch (error: any) {
+        if (error.message?.includes('Ya existe')) return res.status(409).json({ error: error.message });
+        if (error.message?.includes('no encontrada') || error.message?.includes('Paradero')) return res.status(404).json({ error: error.message });
         next(error);
     }
 });
@@ -158,6 +185,27 @@ router.patch('/users/:id/deactivate', async (req: Request, res: Response, next: 
 });
 
 /**
+ * PATCH /api/v1/admin/users/:id/toggle
+ * Alternar el estado isActive de un usuario.
+ * SUPER_ADMIN puede hacerlo con cualquier usuario.
+ * ADMIN puede hacerlo solo con vendedores (AGENCY_SELLER) de su propia empresa.
+ */
+router.patch('/users/:id/toggle', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.params.id as string;
+        const { isActive } = req.body;
+        if (typeof isActive !== 'boolean') {
+            return res.status(400).json({ error: 'Campo requerido: isActive (boolean)' });
+        }
+        const result = await adminService.toggleUserStatus(userId, isActive);
+        return res.status(200).json(result);
+    } catch (error: any) {
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
  * GET /api/v1/admin/users
  * Listar todos los usuarios con paginación y filtros.
  * SUPER_ADMIN ve todos. ADMIN solo ve usuarios de su empresa.
@@ -193,4 +241,21 @@ router.get('/stats', async (req: Request, res: Response, next: NextFunction) => 
     }
 });
 
+/**
+ * GET /api/v1/admin/audit-logs
+ * Obtener bitácora de auditoría del sistema
+ * Accesible para SUPER_ADMIN y ADMIN
+ */
+router.get('/audit-logs', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const result = await AuditLogService.getLogs(page, limit);
+        return res.status(200).json(result);
+    } catch (error) {
+        next(error);
+    }
+});
+
 export default router;
+

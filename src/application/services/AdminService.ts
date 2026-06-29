@@ -3,6 +3,7 @@ import { AppDataSource } from '../../infrastructure/database/data-source';
 import { UserEntity, UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { CompanyEntity } from '../../infrastructure/database/entities/CompanyEntity';
 import { logger } from '../../infrastructure/logger';
+import { StationEntity } from '../../infrastructure/database/entities/StationEntity';
 
 const SALT_ROUNDS = 12;
 
@@ -14,6 +15,7 @@ export interface CreateAdminDTO {
     docType?: string;
     docNum?: string;
     phone?: string;
+    stationId?: string; // Solo para vendedores
 }
 
 export interface UpdateUserRoleDTO {
@@ -36,6 +38,10 @@ export class AdminService {
 
     private get companyRepo() {
         return AppDataSource.getRepository(CompanyEntity);
+    }
+
+    private get stationRepo() {
+        return AppDataSource.getRepository(StationEntity);
     }
 
     /**
@@ -119,6 +125,51 @@ export class AdminService {
     }
 
     /**
+     * Crear un usuario AGENCY_SELLER vinculado a una empresa y opcionalmente a un paradero (estación).
+     */
+    public async createSeller(data: CreateAdminDTO): Promise<Omit<UserEntity, 'passwordHash' | 'refreshToken'>> {
+        const existing = await this.userRepo.findOne({ where: { email: data.email.toLowerCase() } });
+        if (existing) {
+            throw new Error('Ya existe una cuenta registrada con este correo electrónico');
+        }
+
+        const company = await this.companyRepo.findOne({ where: { id: data.companyId } });
+        if (!company) {
+            throw new Error('Empresa no encontrada');
+        }
+
+        let station = null;
+        if (data.stationId) {
+            station = await this.stationRepo.findOne({ where: { id: data.stationId, company: { id: company.id } } });
+            if (!station) {
+                throw new Error('Paradero/Estación no encontrada o no pertenece a la empresa');
+            }
+        }
+
+        const passwordHash = await bcrypt.hash(data.password, SALT_ROUNDS);
+
+        const user = this.userRepo.create({
+            name: data.name,
+            email: data.email.toLowerCase(),
+            passwordHash,
+            role: UserRole.AGENCY_SELLER,
+            company,
+            station,
+            docType: data.docType,
+            docNum: data.docNum,
+            phone: data.phone,
+            balance: 0,
+            isActive: true,
+        });
+
+        const saved = await this.userRepo.save(user);
+        logger.info(`[Admin] SELLER creado: ${saved.email} → empresa: ${company.tradeName} (Estación: ${station?.name || 'N/A'})`);
+
+        const { passwordHash: _, refreshToken: __, ...safeUser } = saved;
+        return safeUser;
+    }
+
+    /**
      * Cambiar el rol de un usuario existente.
      * Permite promover PASSENGER → ADMIN/DRIVER o degradar roles.
      */
@@ -187,11 +238,13 @@ export class AdminService {
         const qb = this.userRepo
             .createQueryBuilder('user')
             .leftJoinAndSelect('user.company', 'company')
+            .leftJoinAndSelect('user.station', 'station')
             .select([
                 'user.id', 'user.name', 'user.email', 'user.role',
                 'user.docType', 'user.docNum', 'user.phone',
                 'user.balance', 'user.isActive', 'user.createdAt',
                 'company.id', 'company.tradeName',
+                'station.id', 'station.name', 'station.city',
             ])
             .orderBy('user.createdAt', 'DESC')
             .skip(skip)

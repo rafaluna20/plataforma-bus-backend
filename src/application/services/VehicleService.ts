@@ -13,6 +13,8 @@ export interface CreateVehicleDTO {
 }
 
 export interface UpdateVehicleDTO {
+    plateNumber?: string;
+    vehicleType?: string;
     serviceMode?: ServiceMode;
     seatTemplate?: any;
     capacity?: number;
@@ -120,11 +122,11 @@ export class VehicleService {
         return this.repo.save(vehicle);
     }
 
-    /** Listar vehículos de una empresa */
+    /** Listar todos los vehículos de una empresa (activos e inactivos) */
     public async findByCompany(companyId: string): Promise<VehicleEntity[]> {
         return this.repo.find({
-            where: { company: { id: companyId }, isActive: true },
-            order: { plateNumber: 'ASC' },
+            where: { company: { id: companyId } },
+            order: { isActive: 'DESC', plateNumber: 'ASC' },
         });
     }
 
@@ -138,6 +140,16 @@ export class VehicleService {
     /** Actualizar configuración de vehículo (ej. cambiar plantilla de asientos de minivan) */
     public async update(id: string, data: UpdateVehicleDTO): Promise<VehicleEntity> {
         const vehicle = await this.findById(id);
+
+        // Validar unicidad de placa si se está cambiando
+        if (data.plateNumber && data.plateNumber.toUpperCase() !== vehicle.plateNumber) {
+            const conflict = await this.repo.findOne({ where: { plateNumber: data.plateNumber.toUpperCase() } });
+            if (conflict) {
+                throw new Error(`La placa ${data.plateNumber.toUpperCase()} ya está registrada en otro vehículo`);
+            }
+            data.plateNumber = data.plateNumber.toUpperCase();
+        }
+
         Object.assign(vehicle, data);
         return this.repo.save(vehicle);
     }
@@ -146,4 +158,11 @@ export class VehicleService {
     public getDefaultTemplates() {
         return DEFAULT_SEAT_TEMPLATES;
     }
+
+    /** Eliminar un vehículo de la flota (Soft Delete) */
+    public async delete(id: string): Promise<VehicleEntity> {
+        const vehicle = await this.findById(id);
+        return this.repo.softRemove(vehicle);
+    }
 }
+

@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { RouteService } from '../../application/services/RouteService';
+import { AuditLogService } from '../../application/services/AuditLogService';
 
 const router = Router();
 const routeService = new RouteService();
@@ -28,14 +29,17 @@ router.post('/stations', async (req: Request, res: Response, next: NextFunction)
 
 /**
  * GET /api/v1/routes/stations?city=Lima
- * Listar paraderos por ciudad
+ * Listar paraderos. El parámetro `city` es opcional; sin él, retorna todas.
  */
 router.get('/stations', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { city } = req.query;
-        if (!city) return res.status(400).json({ error: 'Parámetro requerido: city' });
-
-        const stations = await routeService.findStationsByCity(city as string);
+        let stations;
+        if (city) {
+            stations = await routeService.findStationsByCity(city as string);
+        } else {
+            stations = await routeService.findAllStations();
+        }
         return res.status(200).json({ count: stations.length, stations });
     } catch (error) {
         next(error);
@@ -60,6 +64,18 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
         }
 
         const route = await routeService.createRoute({ companyId, name, serviceMode, polyline, waypoints });
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CREATE_ROUTE',
+            entityName: 'RouteEntity',
+            entityId: route.id,
+            newValue: { name: route.name, serviceMode: route.serviceMode },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(201).json({ message: 'Ruta creada exitosamente', route });
     } catch (error: any) {
         if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
@@ -93,6 +109,62 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         const id = req.params.id as string;
         const route = await routeService.findById(id);
         return res.status(200).json(route);
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
+ * PUT /api/v1/routes/:id
+ * Actualizar una ruta y sus waypoints
+ */
+router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        const route = await routeService.updateRoute(id, req.body);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'UPDATE_ROUTE',
+            entityName: 'RouteEntity',
+            entityId: id,
+            newValue: req.body,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(200).json({ message: 'Ruta actualizada exitosamente', route });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('secuenciales') || error.message?.includes('2 paradas')) {
+            return res.status(400).json({ error: error.message });
+        }
+        next(error);
+    }
+});
+
+/**
+ * DELETE /api/v1/routes/:id
+ * Eliminar una ruta
+ */
+router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        await routeService.deleteRoute(id);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'DELETE_ROUTE',
+            entityName: 'RouteEntity',
+            entityId: id,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(200).json({ message: 'Ruta eliminada exitosamente' });
     } catch (error: any) {
         if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
         next(error);

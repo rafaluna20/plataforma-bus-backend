@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, DeleteDateColumn } from 'typeorm';
 import { CompanyEntity } from './CompanyEntity';
 
 export enum UserRole {
@@ -6,6 +6,7 @@ export enum UserRole {
     ADMIN = 'ADMIN',       // Administrador de empresa
     DRIVER = 'DRIVER',     // Conductor
     PASSENGER = 'PASSENGER', // Pasajero
+    AGENCY_SELLER = 'AGENCY_SELLER', // Vendedor de agencia/paradero
 }
 
 @Entity('users')
@@ -41,6 +42,10 @@ export class UserEntity {
     @JoinColumn({ name: 'company_id' })
     company: CompanyEntity | null;
 
+    @ManyToOne('StationEntity', { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'station_id' })
+    station: any | null; // Using any to avoid circular dependency issues if StationEntity is not imported
+
     @Column({ name: 'is_active', type: 'boolean', default: true })
     isActive: boolean;
 
@@ -52,4 +57,8 @@ export class UserEntity {
 
     @UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
     updatedAt: Date;
+
+    @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp with time zone', nullable: true })
+    deletedAt: Date | null;
 }
+

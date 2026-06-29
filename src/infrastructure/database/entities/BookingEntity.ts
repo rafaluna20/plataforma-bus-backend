@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Unique } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Unique, DeleteDateColumn } from 'typeorm';
 import { TripEntity } from './TripEntity';
 import { RouteWaypointEntity } from './RouteWaypointEntity';
 import { UserEntity } from './UserEntity';
@@ -71,4 +71,8 @@ export class BookingEntity {
 
     @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
     createdAt: Date;
+
+    @DeleteDateColumn({ name: 'deleted_at', type: 'timestamp with time zone', nullable: true })
+    deletedAt: Date | null;
 }
+

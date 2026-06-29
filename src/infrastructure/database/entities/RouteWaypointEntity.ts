@@ -24,4 +24,11 @@ export class RouteWaypointEntity {
 
     @Column({ name: 'base_price', type: 'decimal', precision: 10, scale: 2, default: 0.00 })
     basePrice: number;
+
+    /**
+     * Precio del primer piso (BUS_2P). Si es null se usa basePrice como fallback.
+     * El Piso 1 suele ser el piso de abajo con asientos tipo cama/VIP.
+     */
+    @Column({ name: 'base_price_floor1', type: 'decimal', precision: 10, scale: 2, nullable: true, default: null })
+    basePriceFloor1: number | null;
 }

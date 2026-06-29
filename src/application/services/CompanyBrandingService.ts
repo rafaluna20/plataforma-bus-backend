@@ -15,6 +15,7 @@ export interface UpdateBrandingDTO {
     website?: string;
     description?: string;
     contactEmail?: string;
+    sliderImages?: string[];
 }
 
 export class CompanyBrandingService {
@@ -33,10 +34,22 @@ export class CompanyBrandingService {
     }
 
     /**
-     * Obtener branding de una empresa por ID.
+     * Obtener branding de una empresa por UUID o por RUC.
+     * Si el valor no es un UUID válido, intenta buscar por RUC.
      */
     public async getById(id: string): Promise<CompanyEntity> {
-        const company = await this.repo.findOne({ where: { id } });
+        // Validar si es un UUID válido (formato xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        
+        let company: CompanyEntity | null = null;
+        
+        if (isUUID) {
+            company = await this.repo.findOne({ where: { id } });
+        } else {
+            // Asumir que es un RUC
+            company = await this.repo.findOne({ where: { ruc: id } });
+        }
+        
         if (!company) throw new Error('Empresa no encontrada');
         return company;
     }
@@ -81,6 +94,7 @@ export class CompanyBrandingService {
         if (data.website !== undefined) company.website = data.website;
         if (data.description !== undefined) company.description = data.description;
         if (data.contactEmail !== undefined) company.contactEmail = data.contactEmail;
+        if (data.sliderImages !== undefined) company.sliderImages = data.sliderImages;
 
         const saved = await this.repo.save(company);
         logger.info(`Branding actualizado: empresa ${company.tradeName} (${company.id})`);
