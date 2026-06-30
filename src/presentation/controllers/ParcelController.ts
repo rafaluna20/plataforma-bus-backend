@@ -90,7 +90,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.get('/trip/:tripId', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { tripId } = req.params;
+        const tripId = req.params.tripId as string;
         if (!tripId) return res.status(400).json({ error: 'tripId es requerido' });
 
         const parcels = await parcelService.getParcelsByTrip(tripId);
@@ -111,7 +111,7 @@ router.get('/trip/:tripId', async (req: Request, res: Response, next: NextFuncti
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const parcel = await parcelService.getParcelById(req.params.id);
+        const parcel = await parcelService.getParcelById(req.params.id as string);
         return res.status(200).json({ parcel });
     } catch (error: any) {
         if (error.message?.includes('no encontrada')) {
@@ -138,7 +138,7 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
             });
         }
 
-        const parcel = await parcelService.updateParcelStatus(req.params.id, { status });
+        const parcel = await parcelService.updateParcelStatus(req.params.id as string, { status });
 
         // Auditoría
         await AuditLogService.log({
