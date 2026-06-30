@@ -18,19 +18,33 @@ export class LocationGateway {
     }
 
     private setupRedisAdapter() {
-        const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+        const redisUrl = process.env.REDIS_URL;
+
+        // Si REDIS_URL no está configurada, usar adaptador en memoria (no intentar localhost)
+        if (!redisUrl) {
+            logger.info('[Socket.io] REDIS_URL no configurada. Usando adaptador en memoria.');
+            return;
+        }
 
         try {
-            const pubClient = new Redis(redisUrl);
+            const pubClient = new Redis(redisUrl, {
+                maxRetriesPerRequest: 3,
+                enableReadyCheck: false,
+                lazyConnect: true,
+            });
             const subClient = pubClient.duplicate();
 
-            pubClient.on('error', (err) => logger.warn('Redis Pub Error (Using Memory Adapter Fallback):', { message: err.message }));
-            subClient.on('error', (err) => logger.warn('Redis Sub Error (Using Memory Adapter Fallback):', { message: err.message }));
+            pubClient.on('error', (err) => logger.warn('Redis Pub Error:', { message: err.message }));
+            subClient.on('error', (err) => logger.warn('Redis Sub Error:', { message: err.message }));
 
-            this.io.adapter(createAdapter(pubClient, subClient));
-            logger.info('✅ Redis Adapter configurado para Socket.io (Escalabilidad habilitada)');
-        } catch (error) {
-            logger.warn('⚠️ No se pudo conectar a Redis. Usando adaptador en memoria.');
+            pubClient.connect().then(() => {
+                this.io.adapter(createAdapter(pubClient, subClient));
+                logger.info('✅ Redis Adapter configurado para Socket.io (Escalabilidad habilitada)');
+            }).catch((err) => {
+                logger.warn(`⚠️ No se pudo conectar a Redis: ${err.message}. Usando adaptador en memoria.`);
+            });
+        } catch (error: any) {
+            logger.warn(`⚠️ Error al inicializar Redis: ${error.message}. Usando adaptador en memoria.`);
         }
     }
 
