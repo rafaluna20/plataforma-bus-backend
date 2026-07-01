@@ -31,6 +31,33 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 });
 
 /**
+ * PATCH /api/v1/management/trips/:id
+ * Editar/Reprogramar un viaje (cambiar salida o vehículo)
+ */
+router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { departureTime, vehicleId } = req.body;
+        const tripId = req.params.id as string;
+
+        if (!departureTime && !vehicleId) {
+            return res.status(400).json({ error: 'Debe proveer al menos uno de: departureTime, vehicleId' });
+        }
+
+        const trip = await tripMgmtService.update(tripId, { 
+            departureTime: departureTime ? new Date(departureTime) : undefined, 
+            vehicleId 
+        });
+
+        return res.status(200).json({ message: 'Viaje reprogramado exitosamente', trip });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('programado') || error.message?.includes('conflicto')) return res.status(409).json({ error: error.message });
+        if (error.message) return res.status(400).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
  * PATCH /api/v1/management/trips/:id/status
  * Actualizar el estado de un viaje (SCHEDULED → BOARDING → IN_TRANSIT → COMPLETED)
  */

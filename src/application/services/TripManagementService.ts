@@ -79,6 +79,72 @@ export class TripManagementService {
         return saved;
     }
 
+    /** Actualizar datos de un viaje (reprogramar fecha/hora o cambiar vehículo) */
+    public async update(tripId: string, data: { departureTime?: Date; vehicleId?: string }): Promise<TripEntity> {
+        const trip = await this.tripRepo.findOne({ 
+            where: { id: tripId }, 
+            relations: { route: true, vehicle: true } 
+        });
+        if (!trip) throw new Error('Viaje no encontrado');
+
+        // Solo permitir editar viajes PROGRAMADOS
+        if (trip.status !== TripStatus.SCHEDULED) {
+            throw new Error('Solo se pueden editar viajes en estado Programado (SCHEDULED)');
+        }
+
+        const vehicleRepo = AppDataSource.getRepository(VehicleEntity);
+
+        if (data.vehicleId && data.vehicleId !== trip.vehicle.id) {
+            const vehicle = await vehicleRepo.findOne({ where: { id: data.vehicleId }, relations: { company: true } });
+            if (!vehicle) throw new Error('Vehículo no encontrado');
+            
+            // Validar que el vehículo esté activo
+            if (!vehicle.isActive) {
+                throw new Error(`El vehículo ${vehicle.plateNumber} está inactivo`);
+            }
+
+            // Validar que pertenezca a la misma empresa
+            const routeRepo = AppDataSource.getRepository(RouteEntity);
+            const route = await routeRepo.findOne({ where: { id: trip.route.id }, relations: { company: true } });
+            if (route && route.company.id !== vehicle.company.id) {
+                throw new Error('El vehículo debe pertenecer a la misma empresa que la ruta');
+            }
+
+            trip.vehicle = vehicle;
+        }
+
+        const newDepartureTime = data.departureTime ? new Date(data.departureTime) : trip.departureTime;
+
+        if (data.departureTime) {
+            // Validar que la nueva fecha sea futura
+            if (newDepartureTime <= new Date()) {
+                throw new Error('La fecha de salida debe ser en el futuro');
+            }
+            trip.departureTime = newDepartureTime;
+        }
+
+        // Validar conflicto de horario para el vehículo asignado en la nueva fecha/hora (si cambió la hora o el vehículo)
+        if (data.departureTime || data.vehicleId) {
+            const conflictingTrip = await this.tripRepo
+                .createQueryBuilder('trip')
+                .where('trip.vehicle_id = :vehicleId', { vehicleId: trip.vehicle.id })
+                .andWhere('trip.id != :tripId', { tripId })
+                .andWhere('trip.status IN (:...activeStatuses)', {
+                    activeStatuses: [TripStatus.SCHEDULED, TripStatus.BOARDING, TripStatus.IN_TRANSIT],
+                })
+                .andWhere('DATE(trip.departure_time) = DATE(:newDepartureTime)', { newDepartureTime })
+                .getOne();
+
+            if (conflictingTrip) {
+                throw new Error(`El vehículo ${trip.vehicle.plateNumber} ya tiene un viaje programado para esa fecha`);
+            }
+        }
+
+        const saved = await this.tripRepo.save(trip);
+        logger.info(`Viaje reprogramado: ${saved.id} | Nueva salida: ${saved.departureTime.toISOString()} | Vehículo: ${saved.vehicle.plateNumber}`);
+        return saved;
+    }
+
     /** Actualizar el estado de un viaje (Programado → Abordando → En Tránsito → Finalizado) */
     public async updateStatus(data: UpdateTripStatusDTO): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({ where: { id: data.tripId } });
