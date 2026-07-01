@@ -84,6 +84,46 @@ export class RouteService {
         });
     }
 
+    /** Actualizar nombre, ciudad, dirección y coordenadas de una estación */
+    public async updateStation(
+        id: string,
+        data: { name: string; city: string; address?: string; latitude?: number; longitude?: number }
+    ): Promise<StationEntity> {
+        const station = await this.stationRepo.findOne({ where: { id } });
+        if (!station) throw new Error(`Estación con ID ${id} no encontrada`);
+
+        station.name = data.name;
+        station.city = data.city;
+        if (data.address !== undefined) station.address = data.address;
+
+        if (data.latitude !== undefined && data.longitude !== undefined) {
+            // Actualizar coordenadas PostGIS
+            await this.stationRepo.query(
+                `UPDATE station SET location = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3`,
+                [data.longitude, data.latitude, id]
+            );
+        }
+
+        return this.stationRepo.save(station);
+    }
+
+    /** Desactivar (soft-delete) una estación — verifica que no esté en uso en rutas activas */
+    public async deleteStation(id: string): Promise<void> {
+        const station = await this.stationRepo.findOne({ where: { id } });
+        if (!station) throw new Error(`Estación con ID ${id} no encontrada`);
+
+        // Verificar si la estación está en uso en algún waypoint
+        const waypointCount = await this.waypointRepo.count({ where: { station: { id } } });
+        if (waypointCount > 0) {
+            throw new Error(
+                `La estación "${station.name}" está en uso en ${waypointCount} ruta(s). Elimínala de las rutas primero.`
+            );
+        }
+
+        station.isActive = false;
+        await this.stationRepo.save(station);
+    }
+
     // ==================== RUTAS Y WAYPOINTS ====================
 
     /** Crear una ruta completa con sus paradas intermedias (waypoints) */

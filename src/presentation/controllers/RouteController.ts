@@ -46,6 +46,43 @@ router.get('/stations', async (req: Request, res: Response, next: NextFunction) 
     }
 });
 
+/**
+ * PUT /api/v1/routes/stations/:id
+ * Actualizar nombre, ciudad, dirección y coordenadas de una estación
+ */
+router.put('/stations/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        const { name, city, address, latitude, longitude } = req.body;
+
+        if (!name || !city) {
+            return res.status(400).json({ error: 'Campos requeridos: name, city' });
+        }
+
+        const station = await routeService.updateStation(id, { name, city, address, latitude, longitude });
+        return res.status(200).json({ message: 'Estación actualizada exitosamente', station });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
+ * DELETE /api/v1/routes/stations/:id
+ * Desactivar (soft-delete) una estación
+ */
+router.delete('/stations/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        await routeService.deleteStation(id);
+        return res.status(200).json({ message: 'Estación eliminada exitosamente' });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('en uso')) return res.status(409).json({ error: error.message });
+        next(error);
+    }
+});
+
 // ==================== RUTAS ====================
 
 /**
