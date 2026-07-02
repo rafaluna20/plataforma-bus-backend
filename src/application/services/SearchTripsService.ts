@@ -1,5 +1,6 @@
 import { AppDataSource } from '../../infrastructure/database/data-source';
 import { TripEntity, TripStatus } from '../../infrastructure/database/entities/TripEntity';
+import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
 import { cache, CacheKeys, CacheTTL } from '../../infrastructure/cache/RedisCache';
 
 export interface SearchTripsDTO {
@@ -22,6 +23,45 @@ export interface SearchTripsResult {
 
 export class SearchTripsService {
     /**
+     * Calcula asientos disponibles por viaje (capacidad - asientos distintos con reserva activa)
+     * y los adjunta como trip.availableSeats. Se ejecuta fuera del caché de búsqueda para que
+     * el conteo de asientos siempre refleje las reservas más recientes.
+     */
+    private async attachAvailableSeats(trips: TripEntity[]): Promise<TripEntity[]> {
+        if (trips.length === 0) return trips;
+
+        const tripIds = trips.map(t => t.id);
+        const bookingRepo = AppDataSource.getRepository(BookingEntity);
+        const activeStatuses = [
+            PaymentStatus.PENDING_CASH,
+            PaymentStatus.PENDING_DIGITAL,
+            PaymentStatus.PAID_DIGITAL,
+            PaymentStatus.PAID,
+        ];
+
+        const occupancy = await bookingRepo
+            .createQueryBuilder('b')
+            .select('b.trip_id', 'tripId')
+            .addSelect('COUNT(DISTINCT b.seat_id)', 'occupied')
+            .where('b.trip_id IN (:...tripIds)', { tripIds })
+            .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
+            .groupBy('b.trip_id')
+            .getRawMany();
+
+        const occupiedByTripId = new Map<string, number>(
+            occupancy.map((row: any) => [row.tripId, parseInt(row.occupied, 10)])
+        );
+
+        trips.forEach(trip => {
+            const occupied = occupiedByTripId.get(trip.id) || 0;
+            const capacity = trip.vehicle?.capacity || 0;
+            (trip as any).availableSeats = Math.max(0, capacity - occupied);
+        });
+
+        return trips;
+    }
+
+    /**
      * Busca viajes programados que pasen por el origen y destino en el orden correcto
      * y en la fecha solicitada. Usa SQL con JOINs en lugar de filtrado en memoria.
      */
@@ -37,8 +77,11 @@ export class SearchTripsService {
         if (originCity && destinationCity && travelDate) {
             const dateStr = travelDate.toISOString().split('T')[0];
             const cacheKey = CacheKeys.tripSearch(originCity, destinationCity, dateStr, page, limit);
-            const cached = await cache.get(cacheKey);
+            const cached = await cache.get<SearchTripsResult>(cacheKey);
             if (cached) {
+                // Los asientos disponibles se recalculan siempre en vivo (no se cachean)
+                // para reflejar las reservas más recientes.
+                cached.data = await this.attachAvailableSeats(cached.data);
                 return cached;
             }
         }
@@ -78,6 +121,8 @@ export class SearchTripsService {
                     trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
                 }
             });
+
+            await this.attachAvailableSeats(trips);
 
             return {
                 data: trips,
@@ -149,10 +194,12 @@ export class SearchTripsService {
             searchParams: { originCity, destinationCity, travelDate },
         };
 
-        // Guardar en caché por 5 minutos
+        // Guardar en caché por 5 minutos (sin asientos disponibles: se calculan siempre en vivo)
         const dateStr = travelDate.toISOString().split('T')[0];
         const cacheKey = CacheKeys.tripSearch(originCity, destinationCity, dateStr, page, limit);
         await cache.set(cacheKey, result, CacheTTL.TRIP_SEARCH);
+
+        await this.attachAvailableSeats(trips);
 
         return result;
     }
