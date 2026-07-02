@@ -10,16 +10,17 @@ const tripMgmtService = new TripManagementService();
  */
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { routeId, vehicleId, departureTime } = req.body;
+        const { routeId, vehicleId, departureTime, driverId } = req.body;
 
         if (!routeId || !vehicleId || !departureTime) {
             return res.status(400).json({ error: 'Campos requeridos: routeId, vehicleId, departureTime' });
         }
 
-        const trip = await tripMgmtService.create({ routeId, vehicleId, departureTime: new Date(departureTime) });
+        const trip = await tripMgmtService.create({ routeId, vehicleId, departureTime: new Date(departureTime), driverId: driverId || undefined });
         return res.status(201).json({ message: 'Viaje programado exitosamente', trip });
     } catch (error: any) {
         if (error.message?.includes('misma empresa')) return res.status(400).json({ error: error.message });
+        if (error.message?.includes('ya tiene un viaje')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('programado')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('no encontrad')) return res.status(404).json({ error: error.message });
         if (error.message?.includes('futuro') || error.message?.includes('fecha')) return res.status(400).json({ error: error.message });
@@ -36,21 +37,23 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  */
 router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { departureTime, vehicleId } = req.body;
+        const { departureTime, vehicleId, driverId } = req.body;
         const tripId = req.params.id as string;
 
-        if (!departureTime && !vehicleId) {
-            return res.status(400).json({ error: 'Debe proveer al menos uno de: departureTime, vehicleId' });
+        if (departureTime === undefined && vehicleId === undefined && driverId === undefined) {
+            return res.status(400).json({ error: 'Debe proveer al menos uno de: departureTime, vehicleId, driverId' });
         }
 
-        const trip = await tripMgmtService.update(tripId, { 
-            departureTime: departureTime ? new Date(departureTime) : undefined, 
-            vehicleId 
+        const trip = await tripMgmtService.update(tripId, {
+            departureTime: departureTime ? new Date(departureTime) : undefined,
+            vehicleId,
+            driverId, // undefined = no tocar; null o '' = quitar conductor; uuid = asignar
         });
 
         return res.status(200).json({ message: 'Viaje reprogramado exitosamente', trip });
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('ya tiene un viaje')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('programado') || error.message?.includes('conflicto')) return res.status(409).json({ error: error.message });
         if (error.message) return res.status(400).json({ error: error.message });
         next(error);
@@ -86,6 +89,23 @@ router.get('/company/:companyId', async (req: Request, res: Response, next: Next
         const companyId = req.params.companyId as string;
         const result = await tripMgmtService.findByCompany(companyId, status as any);
         return res.status(200).json({ count: result.total, trips: result.data, page: result.page, totalPages: result.totalPages });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/v1/management/trips/my-driver
+ * Viajes activos asignados al conductor autenticado (para su panel).
+ * DEBE declararse antes de la ruta '/:id' para no ser capturada por el param.
+ */
+router.get('/my-driver', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const driverId = req.user?.sub;
+        if (!driverId) return res.status(401).json({ error: 'No autenticado' });
+
+        const trips = await tripMgmtService.findByDriver(driverId);
+        return res.status(200).json({ count: trips.length, trips });
     } catch (error) {
         next(error);
     }

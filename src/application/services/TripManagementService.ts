@@ -2,6 +2,7 @@ import { AppDataSource } from '../../infrastructure/database/data-source';
 import { TripEntity, TripStatus } from '../../infrastructure/database/entities/TripEntity';
 import { RouteEntity } from '../../infrastructure/database/entities/RouteEntity';
 import { VehicleEntity } from '../../infrastructure/database/entities/VehicleEntity';
+import { UserEntity, UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
 import { logger } from '../../infrastructure/logger';
 
@@ -9,6 +10,7 @@ export interface CreateTripDTO {
     routeId: string;
     vehicleId: string;
     departureTime: Date;
+    driverId?: string; // Conductor asignado (opcional)
 }
 
 export interface UpdateTripStatusDTO {
@@ -24,6 +26,73 @@ export interface PaginationOptions {
 export class TripManagementService {
     private get tripRepo() {
         return AppDataSource.getRepository(TripEntity);
+    }
+
+    /**
+     * Valida un conductor para asignarlo a un viaje y lo devuelve.
+     * Verifica: existe, rol DRIVER, activo, pertenece a la empresa indicada,
+     * y no tiene otro viaje activo el mismo día (anti doble-asignación).
+     */
+    private async validateDriverForTrip(
+        driverId: string,
+        companyId: string,
+        departureDate: Date,
+        excludeTripId?: string,
+    ): Promise<UserEntity> {
+        const userRepo = AppDataSource.getRepository(UserEntity);
+        const driver = await userRepo.findOne({
+            where: { id: driverId },
+            relations: { company: true },
+        });
+
+        if (!driver) throw new Error('Conductor no encontrado');
+        if (driver.role !== UserRole.DRIVER) throw new Error('El usuario seleccionado no es un conductor');
+        if (!driver.isActive) throw new Error('El conductor está inactivo y no puede ser asignado');
+        if (!driver.company || driver.company.id !== companyId) {
+            throw new Error('El conductor debe pertenecer a la misma empresa que la ruta');
+        }
+
+        // Anti doble-asignación: el conductor no puede tener otro viaje activo el mismo día
+        const conflictQb = this.tripRepo
+            .createQueryBuilder('trip')
+            .where('trip.driver_id = :driverId', { driverId })
+            .andWhere('trip.status IN (:...activeStatuses)', {
+                activeStatuses: [TripStatus.SCHEDULED, TripStatus.BOARDING, TripStatus.IN_TRANSIT],
+            })
+            .andWhere('DATE(trip.departure_time) = DATE(:departureDate)', { departureDate });
+
+        if (excludeTripId) {
+            conflictQb.andWhere('trip.id != :excludeTripId', { excludeTripId });
+        }
+
+        const conflicting = await conflictQb.getOne();
+        if (conflicting) {
+            throw new Error(`El conductor ${driver.name} ya tiene un viaje asignado para esa fecha`);
+        }
+
+        return driver;
+    }
+
+    /** Devuelve solo los campos públicos del conductor (sin hash de contraseña ni tokens). */
+    private sanitizeDriver(driver: UserEntity | null): { id: string; name: string; phone: string | null; docNum: string | null } | null {
+        if (!driver) return null;
+        return {
+            id: driver.id,
+            name: driver.name,
+            phone: driver.phone ?? null,
+            docNum: driver.docNum ?? null,
+        };
+    }
+
+    /** Reemplaza el objeto driver completo por su versión saneada en un viaje (o lista). */
+    private sanitizeTripDrivers<T extends TripEntity | TripEntity[]>(trips: T): T {
+        const list = Array.isArray(trips) ? trips : [trips];
+        for (const trip of list) {
+            if ('driver' in trip) {
+                (trip as any).driver = this.sanitizeDriver(trip.driver);
+            }
+        }
+        return trips;
     }
 
     /** Programar una nueva salida/viaje */
@@ -67,23 +136,36 @@ export class TripManagementService {
             throw new Error(`El vehículo ${vehicle.plateNumber} ya tiene un viaje programado para esa fecha`);
         }
 
+        // Validar y resolver el conductor si se proporcionó (es opcional)
+        let driver: UserEntity | null = null;
+        if (data.driverId) {
+            driver = await this.validateDriverForTrip(data.driverId, route.company.id, departureDate);
+        }
+
         const trip = this.tripRepo.create({
             route,
             vehicle,
+            driver,
             departureTime: departureDate,
             status: TripStatus.SCHEDULED,
         });
 
         const saved = await this.tripRepo.save(trip);
-        logger.info(`Viaje programado: ${saved.id} | Ruta: ${route.name} | Vehículo: ${vehicle.plateNumber} | Salida: ${departureDate.toISOString()}`);
-        return saved;
+        logger.info(`Viaje programado: ${saved.id} | Ruta: ${route.name} | Vehículo: ${vehicle.plateNumber} | Conductor: ${driver?.name ?? 'sin asignar'} | Salida: ${departureDate.toISOString()}`);
+        return this.sanitizeTripDrivers(saved);
     }
 
-    /** Actualizar datos de un viaje (reprogramar fecha/hora o cambiar vehículo) */
-    public async update(tripId: string, data: { departureTime?: Date; vehicleId?: string }): Promise<TripEntity> {
-        const trip = await this.tripRepo.findOne({ 
-            where: { id: tripId }, 
-            relations: { route: true, vehicle: true } 
+    /**
+     * Actualizar datos de un viaje (reprogramar fecha/hora, cambiar vehículo o conductor).
+     * driverId: undefined = no tocar; null o '' = quitar conductor; uuid = asignar/cambiar.
+     */
+    public async update(
+        tripId: string,
+        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null },
+    ): Promise<TripEntity> {
+        const trip = await this.tripRepo.findOne({
+            where: { id: tripId },
+            relations: { route: { company: true }, vehicle: true, driver: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
 
@@ -140,9 +222,23 @@ export class TripManagementService {
             }
         }
 
+        // Conductor: undefined = no tocar; null/'' = quitar; uuid = validar y asignar
+        if (data.driverId !== undefined) {
+            if (!data.driverId) {
+                trip.driver = null;
+            } else {
+                trip.driver = await this.validateDriverForTrip(
+                    data.driverId,
+                    trip.route.company.id,
+                    newDepartureTime,
+                    tripId,
+                );
+            }
+        }
+
         const saved = await this.tripRepo.save(trip);
-        logger.info(`Viaje reprogramado: ${saved.id} | Nueva salida: ${saved.departureTime.toISOString()} | Vehículo: ${saved.vehicle.plateNumber}`);
-        return saved;
+        logger.info(`Viaje reprogramado: ${saved.id} | Nueva salida: ${saved.departureTime.toISOString()} | Vehículo: ${saved.vehicle.plateNumber} | Conductor: ${saved.driver?.name ?? 'sin asignar'}`);
+        return this.sanitizeTripDrivers(saved);
     }
 
     /** Actualizar el estado de un viaje (Programado → Abordando → En Tránsito → Finalizado) */
@@ -185,6 +281,7 @@ export class TripManagementService {
             .innerJoinAndSelect('trip.route', 'route')
             .innerJoinAndSelect('trip.vehicle', 'vehicle')
             .innerJoinAndSelect('route.company', 'company')
+            .leftJoinAndSelect('trip.driver', 'driver')
             .where('company.id = :companyId', { companyId })
             .orderBy('trip.departure_time', 'DESC')
             .skip(skip)
@@ -197,18 +294,57 @@ export class TripManagementService {
         const [data, total] = await query.getManyAndCount();
 
         return {
-            data,
+            data: this.sanitizeTripDrivers(data),
             total,
             page,
             totalPages: Math.ceil(total / limit),
         };
     }
 
+    /**
+     * Listar los viajes asignados a un conductor (para su panel).
+     * Por defecto solo viajes activos (no finalizados ni cancelados).
+     */
+    public async findByDriver(driverId: string): Promise<TripEntity[]> {
+        const trips = await this.tripRepo.createQueryBuilder('trip')
+            .innerJoinAndSelect('trip.route', 'route')
+            .innerJoinAndSelect('route.waypoints', 'waypoints')
+            .innerJoinAndSelect('waypoints.station', 'station')
+            .innerJoinAndSelect('trip.vehicle', 'vehicle')
+            .innerJoinAndSelect('route.company', 'company')
+            .leftJoinAndSelect('trip.driver', 'driver')
+            .where('trip.driver_id = :driverId', { driverId })
+            .andWhere('trip.status IN (:...activeStatuses)', {
+                activeStatuses: [TripStatus.SCHEDULED, TripStatus.BOARDING, TripStatus.IN_TRANSIT],
+            })
+            .orderBy('trip.departure_time', 'ASC')
+            .getMany();
+
+        trips.forEach(trip => {
+            if (trip.route?.waypoints) {
+                trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
+            }
+        });
+
+        return this.sanitizeTripDrivers(trips);
+    }
+
+    /**
+     * Verifica si un conductor está asignado a un viaje específico.
+     * Usado por el gateway de GPS para autorizar la emisión de ubicación.
+     */
+    public async isDriverAssignedToTrip(driverId: string, tripId: string): Promise<boolean> {
+        const count = await this.tripRepo.count({
+            where: { id: tripId, driver: { id: driverId } },
+        });
+        return count > 0;
+    }
+
     /** Obtener viaje por ID con detalle completo (ruta, waypoints, vehículo) */
     public async findById(id: string): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({
             where: { id },
-            relations: { route: { waypoints: { station: true }, company: true }, vehicle: true },
+            relations: { route: { waypoints: { station: true }, company: true }, vehicle: true, driver: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
 
@@ -217,7 +353,7 @@ export class TripManagementService {
             trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
         }
 
-        return trip;
+        return this.sanitizeTripDrivers(trip);
     }
 
     /** Obtener el manifiesto de pasajeros de un viaje (CORREGIDO: incluye todos los estados activos) */

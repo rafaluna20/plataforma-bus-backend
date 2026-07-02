@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { RouteEntity } from './RouteEntity';
 import { VehicleEntity } from './VehicleEntity';
+import { UserEntity } from './UserEntity';
 
 export enum TripStatus {
     SCHEDULED = 'SCHEDULED',
@@ -22,6 +23,11 @@ export class TripEntity {
     @ManyToOne(() => VehicleEntity, { onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'vehicle_id' })
     vehicle: VehicleEntity;
+
+    // Conductor asignado al viaje (opcional). Usuario con rol DRIVER de la misma empresa.
+    @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'driver_id' })
+    driver: UserEntity | null;
 
     @Column({ name: 'departure_time', type: 'timestamp with time zone' })
     departureTime: Date;

@@ -5,8 +5,10 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../logger';
 import { TokenPayload } from '../../application/services/AuthService';
 import { UserRole } from '../database/entities/UserEntity';
+import { TripManagementService } from '../../application/services/TripManagementService';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET_IN_PRODUCTION';
+const tripMgmtService = new TripManagementService();
 
 export class LocationGateway {
     private io: Server;
@@ -76,7 +78,7 @@ export class LocationGateway {
              * SEGURIDAD: Verificar que el emisor tiene un JWT válido con rol DRIVER o ADMIN.
              * Payload esperado: { tripId, lat, lng, speed?, bearing?, token }
              */
-            socket.on('driver_update_location', (data: {
+            socket.on('driver_update_location', async (data: {
                 tripId: string;
                 lat: number;
                 lng: number;
@@ -115,6 +117,23 @@ export class LocationGateway {
                 if (payload.role !== UserRole.DRIVER && payload.role !== UserRole.ADMIN && payload.role !== UserRole.SUPER_ADMIN) {
                     socket.emit('error', { message: 'Solo los conductores pueden emitir actualizaciones de ubicación' });
                     return;
+                }
+
+                // 4b. SEGURIDAD: un DRIVER solo puede emitir GPS para viajes que tiene asignados.
+                // ADMIN/SUPER_ADMIN quedan exentos (monitoreo/pruebas de su empresa).
+                if (payload.role === UserRole.DRIVER) {
+                    try {
+                        const assigned = await tripMgmtService.isDriverAssignedToTrip(payload.sub, data.tripId);
+                        if (!assigned) {
+                            logger.warn(`[Socket] Conductor ${payload.email} intentó emitir GPS para un viaje no asignado: ${data.tripId}`);
+                            socket.emit('error', { message: 'No estás asignado a este viaje' });
+                            return;
+                        }
+                    } catch (err: any) {
+                        logger.error(`[Socket] Error verificando asignación de conductor: ${err.message}`);
+                        socket.emit('error', { message: 'No se pudo verificar la asignación del viaje' });
+                        return;
+                    }
                 }
 
                 // 5. Reenviar a todos en la sala (excepto al que envía)

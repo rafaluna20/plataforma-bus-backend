@@ -18,10 +18,15 @@ const startServer = async () => {
         const server = http.createServer(app);
 
         // 3. Inicializar Socket.io para el rastreo de vehículos en vivo
-        const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3002').split(',');
+        // Nota: "*" como origin literal en un array no funciona como comodín para
+        // socket.io/cors (compara el string exacto), y tampoco es válido junto con
+        // credentials:true. Si CORS_ORIGIN="*", usamos origin:true (refleja el
+        // origen real de cada request), que sí es compatible con credentials:true.
+        const corsOriginEnv = process.env.CORS_ORIGIN || 'http://localhost:3002';
+        const allowedOrigins = corsOriginEnv.split(',').map(o => o.trim());
         const io = new SocketIOServer(server, {
             cors: {
-                origin: allowedOrigins,
+                origin: allowedOrigins.includes('*') ? true : allowedOrigins,
                 methods: ['GET', 'POST'],
                 credentials: true,
             },
