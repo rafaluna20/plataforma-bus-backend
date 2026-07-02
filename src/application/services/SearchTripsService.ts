@@ -23,6 +23,21 @@ export interface SearchTripsResult {
 
 export class SearchTripsService {
     /**
+     * Capacidad efectiva de un vehículo: el seatTemplate es la fuente de verdad de qué
+     * asientos se renderizan/venden realmente. vehicle.capacity es una columna separada
+     * que puede quedar desincronizada si se editó a mano en el formulario de vehículos,
+     * así que solo se usa como fallback cuando no hay template.
+     */
+    private getEffectiveCapacity(vehicle: any): number {
+        const st = vehicle?.seatTemplate;
+        if (!st) return vehicle?.capacity || 0;
+        if (typeof st.totalSeats === 'number' && st.totalSeats > 0) return st.totalSeats;
+        const raw = Array.isArray(st) ? st : (st.seats ?? []);
+        const activeCount = raw.filter((s: any) => s.active !== false).length;
+        return activeCount > 0 ? activeCount : (vehicle?.capacity || 0);
+    }
+
+    /**
      * Calcula asientos disponibles por viaje (capacidad - asientos distintos con reserva activa)
      * y los adjunta como trip.availableSeats. Se ejecuta fuera del caché de búsqueda para que
      * el conteo de asientos siempre refleje las reservas más recientes.
@@ -54,7 +69,7 @@ export class SearchTripsService {
 
         trips.forEach(trip => {
             const occupied = occupiedByTripId.get(trip.id) || 0;
-            const capacity = trip.vehicle?.capacity || 0;
+            const capacity = this.getEffectiveCapacity(trip.vehicle);
             (trip as any).availableSeats = Math.max(0, capacity - occupied);
         });
 
