@@ -70,6 +70,19 @@ const mockTrip = {
     id: 'trip-001',
     route: { id: 'route-001' },
     status: 'SCHEDULED',
+    vehicle: {
+        id: 'vehicle-001',
+        capacity: 4,
+        seatTemplate: {
+            totalSeats: 4,
+            seats: [
+                { id: 'A1', active: true },
+                { id: 'B1', active: true },
+                { id: 'B2', active: true },
+                { id: 'C1', active: false },
+            ],
+        },
+    },
 };
 
 const mockStartWaypoint = { id: 'wp-lima', stopOrder: 1, basePrice: 0 };
@@ -180,6 +193,38 @@ describe('BookingService', () => {
                 .rejects.toThrow('ya se encuentra ocupado');
 
             expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('debe lanzar error si el asiento no existe en el seatTemplate del vehículo', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+
+            await expect(bookingService.createCashBooking({ ...baseBookingData, seatId: 'Z99' }))
+                .rejects.toThrow('no existe en el mapa de asientos');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('debe lanzar error si el asiento está marcado como inactivo en el seatTemplate', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+
+            await expect(bookingService.createCashBooking({ ...baseBookingData, seatId: 'C1' }))
+                .rejects.toThrow('no existe en el mapa de asientos');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('debe permitir la reserva si el vehículo no tiene seatTemplate cargado (sin bloquear)', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ ...mockTrip, vehicle: { id: 'vehicle-002', capacity: 10 } });
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+            mockBookingRepo.create.mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            await expect(bookingService.createCashBooking(baseBookingData)).resolves.toBeDefined();
+            expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
         });
 
         it('debe hacer rollback si ocurre un error inesperado', async () => {
