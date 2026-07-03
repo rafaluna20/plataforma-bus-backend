@@ -169,11 +169,11 @@ class App {
             adminRoutes
         );
 
-        // ENCOMIENDAS: Gestión de paquetes/encomiendas por viaje (ADMIN, SUPER_ADMIN)
+        // ENCOMIENDAS: Gestión de paquetes/encomiendas por viaje (ADMIN, SUPER_ADMIN, AGENCY_SELLER)
         this.express.use(
             '/api/v1/parcels',
             authenticate,
-            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER),
             parcelRoutes
         );
 
