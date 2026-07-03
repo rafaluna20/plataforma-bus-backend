@@ -3,6 +3,7 @@ import { ParcelEntity, ParcelStatus } from '../../infrastructure/database/entiti
 import { PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
 import { TripEntity } from '../../infrastructure/database/entities/TripEntity';
 import { RouteWaypointEntity } from '../../infrastructure/database/entities/RouteWaypointEntity';
+import { UserEntity } from '../../infrastructure/database/entities/UserEntity';
 import { logger } from '../../infrastructure/logger';
 
 export interface CreateParcelDTO {
@@ -17,6 +18,7 @@ export interface CreateParcelDTO {
     weightKg?: number;
     totalPrice: number;
     paymentMethod?: string; // CASH | DIGITAL
+    sellerId?: string;      // ID del vendedor que registra la encomienda
 }
 
 export interface UpdateParcelStatusDTO {
@@ -61,6 +63,12 @@ export class ParcelService {
                 : PaymentStatus.PENDING_CASH;
 
         // 5. Crear encomienda
+        let seller: UserEntity | null = null;
+        if (data.sellerId) {
+            const userRepo = AppDataSource.getRepository(UserEntity);
+            seller = await userRepo.findOne({ where: { id: data.sellerId } }) ?? null;
+        }
+
         const parcel = parcelRepo.create({
             trip,
             senderName:   data.senderName,
@@ -74,6 +82,7 @@ export class ParcelService {
             totalPrice:   data.totalPrice,
             status:       ParcelStatus.RECEIVED,
             paymentStatus,
+            seller,
         });
 
         await parcelRepo.save(parcel);
@@ -96,6 +105,7 @@ export class ParcelService {
             relations: {
                 startWaypoint: { station: true },
                 endWaypoint:   { station: true },
+                seller:        true,
             },
             order: { createdAt: 'DESC' },
         });

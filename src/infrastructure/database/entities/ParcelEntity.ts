@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, Jo
 import { TripEntity } from './TripEntity';
 import { RouteWaypointEntity } from './RouteWaypointEntity';
 import { PaymentStatus } from './BookingEntity';
+import { UserEntity } from './UserEntity';
 
 export enum ParcelStatus {
     RECEIVED = 'RECEIVED',
@@ -53,6 +54,11 @@ export class ParcelEntity {
 
     @Column({ name: 'payment_status', type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING_CASH })
     paymentStatus: PaymentStatus;
+
+    // Vendedor que registró la encomienda
+    @ManyToOne(() => UserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'seller_id' })
+    seller: UserEntity | null;
 
     @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
     createdAt: Date;
