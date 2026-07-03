@@ -18,6 +18,37 @@ export interface CreateBookingDTO {
 
 export class BookingService {
 
+    /**
+     * Extrae el conjunto de IDs de asiento realmente vendibles del seatTemplate de un
+     * vehículo (asientos con active !== false). Soporta tanto el formato plano actual
+     * ({ seats: [...] }) como una plantilla legada de dos pisos ({ floor1, floor2 }).
+     * Sin esta validación, BookingService solo comprobaba el formato del seatId (regex)
+     * y el solapamiento con otras reservas, pero nunca que el asiento existiera en el
+     * vehículo, permitiendo reservar IDs inventados y sobrevender el viaje.
+     */
+    private getValidSeatIds(vehicle: any): Set<string> {
+        const st = vehicle?.seatTemplate;
+        if (!st) return new Set();
+
+        let raw: any[];
+        if (Array.isArray(st)) {
+            raw = st;
+        } else if (Array.isArray(st.seats)) {
+            raw = st.seats;
+        } else {
+            raw = [
+                ...(Array.isArray(st.floor1?.seats) ? st.floor1.seats : []),
+                ...(Array.isArray(st.floor2?.seats) ? st.floor2.seats : []),
+            ];
+        }
+
+        return new Set(
+            raw
+                .filter((s: any) => s?.active !== false && s?.id)
+                .map((s: any) => String(s.id).toUpperCase())
+        );
+    }
+
     // ─── Método privado compartido: validar y calcular precio ─────────────────
     private async validateAndCalculate(
         data: CreateBookingDTO,
@@ -29,9 +60,16 @@ export class BookingService {
         // 1. Obtener Viaje y Tramos Solicitados
         const trip = await tripRepo.findOne({
             where: { id: data.tripId },
-            relations: { route: true },
+            relations: { route: true, vehicle: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        // 1b. El asiento solicitado debe existir realmente en el mapa de asientos del
+        // vehículo asignado (si el vehículo no tiene template cargado, no se bloquea).
+        const validSeatIds = this.getValidSeatIds(trip.vehicle);
+        if (validSeatIds.size > 0 && !validSeatIds.has(data.seatId.toUpperCase())) {
+            throw new Error(`El asiento ${data.seatId} no existe en el mapa de asientos de este vehículo`);
+        }
 
         const startWaypoint = await waypointRepo.findOne({ where: { id: data.startWaypointId } });
         const endWaypoint = await waypointRepo.findOne({ where: { id: data.endWaypointId } });
