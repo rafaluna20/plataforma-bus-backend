@@ -55,6 +55,11 @@ jest.mock('../../infrastructure/logger', () => ({
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
+const mockEmitToTrip = jest.fn();
+jest.mock('../../infrastructure/sockets/SocketBus', () => ({
+    emitToTrip: (...args: unknown[]) => mockEmitToTrip(...args),
+}));
+
 import { TripManagementService } from '../../application/services/TripManagementService';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -232,6 +237,33 @@ describe('TripManagementService', () => {
 
             await expect(service.updateStatus({ tripId: 'no-existe', status: TripStatus.BOARDING }))
                 .rejects.toThrow('Viaje no encontrado');
+        });
+
+        it('debe emitir "boarding_started" por socket al pasar a BOARDING', async () => {
+            const departureTime = new Date('2026-07-10T20:00:00.000Z');
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, departureTime });
+            mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING, departureTime });
+
+            await service.updateStatus({ tripId: 't1', status: TripStatus.BOARDING });
+
+            expect(mockEmitToTrip).toHaveBeenCalledWith(
+                't1', 'trip_status_changed',
+                expect.objectContaining({ tripId: 't1', previousStatus: TripStatus.SCHEDULED, status: TripStatus.BOARDING })
+            );
+            expect(mockEmitToTrip).toHaveBeenCalledWith(
+                't1', 'boarding_started',
+                expect.objectContaining({ tripId: 't1', departureTime })
+            );
+        });
+
+        it('NO debe emitir "boarding_started" en otras transiciones (solo trip_status_changed)', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
+            mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT });
+
+            await service.updateStatus({ tripId: 't1', status: TripStatus.IN_TRANSIT });
+
+            expect(mockEmitToTrip).toHaveBeenCalledTimes(1);
+            expect(mockEmitToTrip).toHaveBeenCalledWith('t1', 'trip_status_changed', expect.anything());
         });
     });
 

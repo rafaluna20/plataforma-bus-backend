@@ -5,6 +5,7 @@ import { VehicleEntity } from '../../infrastructure/database/entities/VehicleEnt
 import { UserEntity, UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
 import { logger } from '../../infrastructure/logger';
+import { emitToTrip } from '../../infrastructure/sockets/SocketBus';
 
 export interface CreateTripDTO {
     routeId: string;
@@ -264,6 +265,30 @@ export class TripManagementService {
         const updated = await this.tripRepo.save(trip);
 
         logger.info(`Estado de viaje actualizado: ${data.tripId} | ${previousStatus} → ${data.status}`);
+
+        // Avisar en vivo a quien tenga abierta la página de rastreo de este viaje
+        // (misma sala `trip_{tripId}` que usa el GPS del conductor).
+        emitToTrip(updated.id, 'trip_status_changed', {
+            tripId: updated.id,
+            previousStatus,
+            status: updated.status,
+            departureTime: updated.departureTime,
+            timestamp: new Date().toISOString(),
+        });
+
+        // El paso a BOARDING es el momento en que un humano en el terminal confirma que
+        // el vehículo está por salir — es el aviso "definitivo" para los pasajeros que
+        // ya compraron pasaje (ver plan: la hora programada sola no es confiable porque
+        // los viajes se adelantan/atrasan en la práctica).
+        if (updated.status === TripStatus.BOARDING) {
+            emitToTrip(updated.id, 'boarding_started', {
+                tripId: updated.id,
+                departureTime: updated.departureTime,
+                message: 'El vehículo está abordando pasajeros. Dirígete al andén de salida.',
+                timestamp: new Date().toISOString(),
+            });
+        }
+
         return updated;
     }
 
