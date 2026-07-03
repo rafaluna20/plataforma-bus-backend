@@ -126,6 +126,7 @@ router.get('/:tripId/manifest', async (req: Request, res: Response, next: NextFu
             .leftJoinAndSelect('sw.station', 'ss')
             .leftJoinAndSelect('b.endWaypoint', 'ew')
             .leftJoinAndSelect('ew.station', 'es')
+            .leftJoinAndSelect('b.user', 'u')
             .where('b.trip_id = :tripId', { tripId })
             .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
             .orderBy('b.seatId', 'ASC')
@@ -143,6 +144,14 @@ router.get('/:tripId/manifest', async (req: Request, res: Response, next: NextFu
                 destination: (b.endWaypoint as any)?.station?.name || 'Destino',
                 paymentStatus: b.paymentStatus,
                 paymentMethod: b.paymentMethod || 'CASH',
+                price: Number(b.totalPrice),
+                createdAt: b.createdAt,
+                seller: b.user ? {
+                    id:    b.user.id,
+                    name:  b.user.name,
+                    email: b.user.email,
+                    role:  b.user.role,
+                } : null,
             })),
         });
     } catch (error) {
