@@ -4,6 +4,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import app from './presentation/app';
 import { AppDataSource } from './infrastructure/database/data-source';
 import { LocationGateway } from './infrastructure/sockets/LocationGateway';
+import { setSocketServer } from './infrastructure/sockets/SocketBus';
 import { logger } from './infrastructure/logger';
 
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,10 @@ const startServer = async () => {
 
         // Configurar Gateway de Ubicaciones GPS (con autenticación)
         new LocationGateway(io);
+
+        // Exponer la instancia de Socket.io a la capa de aplicación (p.ej. avisos de
+        // cambio de estado de viaje) sin acoplarla a los detalles de LocationGateway.
+        setSocketServer(io);
 
         // 4. Levantar el servidor
         server.listen(PORT, () => {
