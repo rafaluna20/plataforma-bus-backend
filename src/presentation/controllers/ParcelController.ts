@@ -48,6 +48,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             weightKg:       weightKg ? parseFloat(weightKg) : undefined,
             totalPrice:     parseFloat(totalPrice),
             paymentMethod,
+            sellerId:       req.user?.sub,   // Vendedor autenticado
         };
 
         const parcel = await parcelService.createParcel(dto);

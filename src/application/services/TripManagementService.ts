@@ -372,21 +372,32 @@ export class TripManagementService {
                 trip: { id: tripId },
                 paymentStatus: status,
             })),
-            relations: { startWaypoint: { station: true }, endWaypoint: { station: true } },
+            relations: {
+                startWaypoint: { station: true },
+                endWaypoint:   { station: true },
+                user:          true,
+            },
             order: { seatId: 'ASC' },
         });
 
         return bookings.map(b => ({
-            bookingId: b.id,
+            bookingId:     b.id,
             passengerName: b.passengerName,
-            docType: b.passengerDocType,
-            docNum: b.passengerDocNum,
-            seatId: b.seatId,
-            from: b.startWaypoint?.station?.name || 'Origen',
-            to: b.endWaypoint?.station?.name || 'Destino',
-            price: b.totalPrice,
+            docType:       b.passengerDocType,
+            docNum:        b.passengerDocNum,
+            seatId:        b.seatId,
+            from:          b.startWaypoint?.station?.name || 'Origen',
+            to:            b.endWaypoint?.station?.name   || 'Destino',
+            price:         b.totalPrice,
             paymentStatus: b.paymentStatus,
             paymentMethod: b.paymentMethod || 'CASH',
+            createdAt:     b.createdAt,
+            seller: b.user ? {
+                id:    b.user.id,
+                name:  b.user.name,
+                email: b.user.email,
+                role:  b.user.role,
+            } : null,
         }));
     }
 }
