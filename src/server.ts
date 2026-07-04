@@ -6,11 +6,16 @@ import { AppDataSource } from './infrastructure/database/data-source';
 import { LocationGateway } from './infrastructure/sockets/LocationGateway';
 import { setSocketServer } from './infrastructure/sockets/SocketBus';
 import { logger } from './infrastructure/logger';
+import { initSentry, captureError } from './infrastructure/monitoring/sentry';
 
 const PORT = process.env.PORT || 3001;
 
 const startServer = async () => {
     try {
+        // 0. Inicializar Sentry lo antes posible para capturar cualquier error
+        // durante el propio arranque (conexión a BD, sockets, etc.)
+        await initSentry();
+
         // 1. Inicializar la conexión a la Base de Datos con TypeORM
         await AppDataSource.initialize();
         logger.info('✅ Base de Datos (PostgreSQL) inicializada correctamente');
@@ -64,6 +69,7 @@ const startServer = async () => {
 
     } catch (error) {
         logger.error('❌ Error fatal al iniciar el servidor:', { error });
+        captureError(error instanceof Error ? error : new Error(String(error)), { phase: 'startup' });
         process.exit(1);
     }
 };

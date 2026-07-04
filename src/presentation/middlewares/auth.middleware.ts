@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { TokenPayload } from '../../application/services/AuthService';
 import { logger } from '../../infrastructure/logger';
+import { setSentryUser } from '../../infrastructure/monitoring/sentry';
 
 // ─── SEGURIDAD: El servidor NO puede arrancar sin JWT_SECRET configurado ──────
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -41,6 +42,7 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     try {
         const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
         req.user = payload;
+        setSentryUser({ id: payload.sub, email: payload.email, role: payload.role });
         next();
     } catch (err: any) {
         if (err.name === 'TokenExpiredError') {

@@ -31,6 +31,7 @@ import { authenticate, authorize } from './middlewares/auth.middleware';
 import { UserRole } from '../infrastructure/database/entities/UserEntity';
 import { logger } from '../infrastructure/logger';
 import { setupSwagger } from '../infrastructure/swagger';
+import { captureError } from '../infrastructure/monitoring/sentry';
 
 // Rate limiting global
 const globalLimiter = rateLimit({
@@ -190,8 +191,7 @@ class App {
 
         // Manejador global de errores (Centralizado)
         this.express.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-            logger.error(`[Error no manejado]: ${err.message}`, {
-                stack: err.stack,
+            captureError(err, {
                 path: req.path,
                 method: req.method,
                 correlationId: req.correlationId,
