@@ -17,7 +17,17 @@ export interface CreateTripDTO {
 export interface UpdateTripStatusDTO {
     tripId: string;
     status: TripStatus;
+    actorRole?: UserRole; // Rol del usuario que ejecuta la transición (valida permisos finos por estado destino)
 }
+
+// Roles autorizados a establecer cada estado destino. AGENCY_SELLER puede autorizar
+// el abordaje (BOARDING/IN_TRANSIT) pero no confirmar llegada (COMPLETED) ni cancelar.
+const ROLES_ALLOWED_PER_STATUS: Partial<Record<TripStatus, UserRole[]>> = {
+    [TripStatus.BOARDING]:   [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER],
+    [TripStatus.IN_TRANSIT]: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER],
+    [TripStatus.COMPLETED]:  [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER],
+    [TripStatus.CANCELLED]:  [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER],
+};
 
 export interface PaginationOptions {
     page?: number;
@@ -258,6 +268,11 @@ export class TripManagementService {
 
         if (!validTransitions[trip.status].includes(data.status)) {
             throw new Error(`No se puede cambiar de "${trip.status}" a "${data.status}"`);
+        }
+
+        const allowedRoles = ROLES_ALLOWED_PER_STATUS[data.status];
+        if (data.actorRole && allowedRoles && !allowedRoles.includes(data.actorRole)) {
+            throw new Error(`Tu rol (${data.actorRole}) no está autorizado para cambiar el viaje a "${data.status}"`);
         }
 
         const previousStatus = trip.status;

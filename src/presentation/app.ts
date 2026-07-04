@@ -154,10 +154,12 @@ class App {
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             routeRoutes
         );
+        // AGENCY_SELLER incluido para poder autorizar el abordaje (PATCH /:id/status);
+        // las demás rutas (crear/reprogramar/listar) restringen el rol internamente.
         this.express.use(
             '/api/v1/management/trips',
             authenticate,
-            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER),
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER),
             tripMgmtRoutes
         );
 
