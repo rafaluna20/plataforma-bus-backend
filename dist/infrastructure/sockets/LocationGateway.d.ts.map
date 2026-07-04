@@ -1,1 +1,0 @@
-{"version":3,"file":"LocationGateway.d.ts","sourceRoot":"","sources":["../../../src/infrastructure/sockets/LocationGateway.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAU,MAAM,WAAW,CAAC;AAU3C,qBAAa,eAAe;IACxB,OAAO,CAAC,EAAE,CAAS;gBAEP,EAAE,EAAE,MAAM;IAMtB,OAAO,CAAC,iBAAiB;IAiBzB,OAAO,CAAC,mBAAmB;CA6F9B"}

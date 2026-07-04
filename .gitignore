@@ -1,5 +1,9 @@
 node_modules
 
+# Salida compilada de TypeScript — el Dockerfile la genera desde cero en
+# cada build (RUN npm run build), nunca se usa el dist/ committeado.
+dist
+
 # Variables de entorno (contienen credenciales reales, nunca commitear)
 .env
 .env.local
