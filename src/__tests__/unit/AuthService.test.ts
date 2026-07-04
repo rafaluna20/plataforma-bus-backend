@@ -39,16 +39,13 @@ jest.mock('../../infrastructure/logger', () => ({
     },
 }));
 
-// Importar después de los mocks
+// Importar después de los mocks. JWT_SECRET y demás ya están seteados en
+// process.env desde jest.setup.js (setupFiles), que corre antes que este
+// import — asignarlos aquí no serviría, ya que los `import` se hoistean por
+// encima de cualquier otro código del archivo y AuthService ya habría
+// capturado el valor anterior en su constante de módulo.
 import { AuthService } from '../../application/services/AuthService';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
-
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
-process.env.JWT_SECRET = 'test-secret-key-for-unit-tests';
-process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-key-for-unit-tests';
-process.env.JWT_EXPIRES_IN = '15m';
-process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 
 describe('AuthService', () => {
     let authService: AuthService;
