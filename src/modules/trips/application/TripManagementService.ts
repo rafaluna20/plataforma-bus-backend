@@ -3,7 +3,7 @@ import { TripEntity, TripStatus } from '../domain/TripEntity';
 import { RouteEntity } from '../../../infrastructure/database/entities/RouteEntity';
 import { VehicleEntity } from '../../../infrastructure/database/entities/VehicleEntity';
 import { UserEntity, UserRole } from '../../../infrastructure/database/entities/UserEntity';
-import { BookingEntity, PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { logger } from '../../../infrastructure/logger';
 import { emitToTrip } from '../../../infrastructure/sockets/SocketBus';
 

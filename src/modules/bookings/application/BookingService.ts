@@ -1,11 +1,11 @@
-import { AppDataSource } from '../../infrastructure/database/data-source';
-import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { AppDataSource } from '../../../infrastructure/database/data-source';
+import { BookingEntity, PaymentStatus } from '../domain/BookingEntity';
 // Import directo al domain (no al barrel del módulo) para evitar cargar
 // TripManagementController/TripManagementService solo por la entidad.
-import { TripEntity } from '../../modules/trips/domain/TripEntity';
-import { RouteWaypointEntity } from '../../infrastructure/database/entities/RouteWaypointEntity';
-import { PaymentGateway, PaymentDetails } from '../ports/PaymentGateway';
-import { logger } from '../../infrastructure/logger';
+import { TripEntity } from '../../trips/domain/TripEntity';
+import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
+import { PaymentGateway, PaymentDetails } from '../../../application/ports/PaymentGateway';
+import { logger } from '../../../infrastructure/logger';
 
 export interface CreateBookingDTO {
     tripId: string;

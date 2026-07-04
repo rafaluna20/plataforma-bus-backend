@@ -2,9 +2,9 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, Jo
 // Import directo al domain (no al barrel del módulo) para evitar cargar
 // TripManagementController/TripManagementService solo por la entidad, y
 // prevenir un ciclo: TripManagementService también importa BookingEntity.
-import { TripEntity } from '../../../modules/trips/domain/TripEntity';
-import { RouteWaypointEntity } from './RouteWaypointEntity';
-import { UserEntity } from './UserEntity';
+import { TripEntity } from '../../trips/domain/TripEntity';
+import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
+import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
 
 export enum PaymentStatus {
     PENDING_CASH = 'PENDING_CASH',

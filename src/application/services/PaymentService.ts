@@ -1,5 +1,5 @@
 import { AppDataSource } from '../../infrastructure/database/data-source';
-import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { BookingEntity, PaymentStatus } from '../../modules/bookings/domain/BookingEntity';
 import { UserEntity } from '../../infrastructure/database/entities/UserEntity';
 import { logger } from '../../infrastructure/logger';
 

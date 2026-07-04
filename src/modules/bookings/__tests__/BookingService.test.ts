@@ -3,7 +3,7 @@
  * Verifica la lógica de overbooking tramificado y cálculo de precios
  */
 
-import { PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { PaymentStatus } from '../domain/BookingEntity';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ const mockQueryRunner = {
     },
 };
 
-jest.mock('../../infrastructure/database/data-source', () => ({
+jest.mock('../../../infrastructure/database/data-source', () => ({
     AppDataSource: {
         createQueryRunner: jest.fn(() => mockQueryRunner),
         getRepository: jest.fn((entity) => {
@@ -58,11 +58,11 @@ jest.mock('../../infrastructure/database/data-source', () => ({
     },
 }));
 
-jest.mock('../../infrastructure/logger', () => ({
+jest.mock('../../../infrastructure/logger', () => ({
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
-import { BookingService } from '../../application/services/BookingService';
+import { BookingService } from '../application/BookingService';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

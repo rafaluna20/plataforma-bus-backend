@@ -16,7 +16,6 @@ declare global {
 
 // Controllers
 import authRoutes from './controllers/AuthController';
-import bookingRoutes from './controllers/BookingController';
 import companyRoutes from './controllers/CompanyController';
 import vehicleRoutes from './controllers/VehicleController';
 import routeRoutes from './controllers/RouteController';
@@ -25,6 +24,7 @@ import paymentRoutes from './controllers/PaymentController';
 import brandingRoutes from './controllers/CompanyBrandingController';
 import { parcelRoutes } from '../modules/parcels';
 import { tripRoutes, tripMgmtRoutes } from '../modules/trips';
+import { bookingRoutes } from '../modules/bookings';
 
 // Middlewares
 import { authenticate, authorize } from './middlewares/auth.middleware';

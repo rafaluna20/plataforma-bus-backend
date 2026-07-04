@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
-import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
 
 export enum ParcelStatus {

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { SearchTripsService, SearchTripsResult } from '../application/SearchTripsService';
 import { AppDataSource } from '../../../infrastructure/database/data-source';
-import { BookingEntity, PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 
 const router = Router();
 const searchTripsService = new SearchTripsService();

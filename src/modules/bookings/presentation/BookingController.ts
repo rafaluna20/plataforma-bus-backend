@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { BookingService } from '../../application/services/BookingService';
-import { authenticate } from '../middlewares/auth.middleware';
-import { MockPaymentAdapter } from '../../infrastructure/payments/MockPaymentAdapter';
-import { AuditLogService } from '../../application/services/AuditLogService';
+import { BookingService } from '../application/BookingService';
+import { authenticate } from '../../../presentation/middlewares/auth.middleware';
+import { MockPaymentAdapter } from '../../../infrastructure/payments/MockPaymentAdapter';
+import { AuditLogService } from '../../../application/services/AuditLogService';
 
 
 const router = Router();

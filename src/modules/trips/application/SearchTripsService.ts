@@ -1,6 +1,6 @@
 import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { TripEntity, TripStatus } from '../domain/TripEntity';
-import { BookingEntity, PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { cache, CacheKeys, CacheTTL } from '../../../infrastructure/cache/RedisCache';
 
 export interface SearchTripsDTO {

@@ -4,7 +4,7 @@
  */
 
 import { TripStatus } from '../domain/TripEntity';
-import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { PaymentStatus } from '../../bookings/domain/BookingEntity';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { ParcelEntity, ParcelStatus } from '../domain/ParcelEntity';
-import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
 import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
