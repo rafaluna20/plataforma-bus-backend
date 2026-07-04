@@ -44,6 +44,8 @@ router.post('/', authenticate, async (req: Request, res: Response, next: NextFun
             endWaypointId,
             seatId,
             userId: req.user?.sub,
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
         });
 
         await AuditLogService.log({
@@ -68,6 +70,9 @@ router.post('/', authenticate, async (req: Request, res: Response, next: NextFun
             },
         });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
@@ -112,6 +117,8 @@ router.post('/digital', authenticate, async (req: Request, res: Response, next: 
                 endWaypointId,
                 seatId,
                 userId: req.user?.sub,
+                actorRole: req.user?.role,
+                actorCompanyId: req.user?.companyId,
             },
             paymentAdapter,
             paymentDetails
@@ -141,6 +148,9 @@ router.post('/digital', authenticate, async (req: Request, res: Response, next: 
             },
         });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
@@ -182,7 +192,7 @@ router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
 router.patch('/:id/cancel', authenticate, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
-        const booking = await bookingService.cancelBooking(id, req.user?.sub);
+        const booking = await bookingService.cancelBooking(id, req.user?.sub, req.user?.role, req.user?.companyId);
 
         await AuditLogService.log({
             userId: req.user?.sub,
@@ -198,6 +208,7 @@ router.patch('/:id/cancel', authenticate, async (req: Request, res: Response, ne
         return res.status(200).json({ message: 'Reserva cancelada exitosamente', booking });
     } catch (error: any) {
         if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('No tienes permisos')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('No se puede cancelar')) return res.status(400).json({ error: error.message });
         next(error);
     }

@@ -19,9 +19,17 @@ router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER
             return res.status(400).json({ error: 'Campos requeridos: routeId, vehicleId, departureTime' });
         }
 
-        const trip = await tripMgmtService.create({ routeId, vehicleId, departureTime: new Date(departureTime), driverId: driverId || undefined });
+        const trip = await tripMgmtService.create({
+            routeId,
+            vehicleId,
+            departureTime: new Date(departureTime),
+            driverId: driverId || undefined,
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
+        });
         return res.status(201).json({ message: 'Viaje programado exitosamente', trip });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('misma empresa')) return res.status(400).json({ error: error.message });
         if (error.message?.includes('ya tiene un viaje')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('programado')) return res.status(409).json({ error: error.message });
@@ -52,10 +60,13 @@ router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DR
             departureTime: departureTime ? new Date(departureTime) : undefined,
             vehicleId,
             driverId, // undefined = no tocar; null o '' = quitar conductor; uuid = asignar
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
         });
 
         return res.status(200).json({ message: 'Viaje reprogramado exitosamente', trip });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         if (error.message?.includes('ya tiene un viaje')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('programado') || error.message?.includes('conflicto')) return res.status(409).json({ error: error.message });
@@ -77,10 +88,16 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         if (!status) return res.status(400).json({ error: 'Campo requerido: status' });
 
         const tripId = req.params.id as string;
-        const trip = await tripMgmtService.updateStatus({ tripId, status, actorRole: req.user?.role });
+        const trip = await tripMgmtService.updateStatus({
+            tripId,
+            status,
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
+        });
         return res.status(200).json({ message: `Estado actualizado a ${status}`, trip });
     } catch (error: any) {
         if (error.message?.includes('No se puede cambiar')) return res.status(400).json({ error: error.message });
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no está autorizado')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
@@ -96,9 +113,16 @@ router.get('/company/:companyId', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN
     try {
         const { status } = req.query;
         const companyId = req.params.companyId as string;
-        const result = await tripMgmtService.findByCompany(companyId, status as any);
+        const result = await tripMgmtService.findByCompany(
+            companyId,
+            status as any,
+            {},
+            req.user?.role,
+            req.user?.companyId,
+        );
         return res.status(200).json({ count: result.total, trips: result.data, page: result.page, totalPages: result.totalPages });
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         next(error);
     }
 });
@@ -127,9 +151,10 @@ router.get('/my-driver', async (req: Request, res: Response, next: NextFunction)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
-        const trip = await tripMgmtService.findById(id);
+        const trip = await tripMgmtService.findById(id, req.user?.role, req.user?.companyId);
         return res.status(200).json(trip);
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
     }
@@ -142,9 +167,11 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
 router.get('/:id/manifest', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
-        const manifest = await tripMgmtService.getPassengerManifest(id);
+        const manifest = await tripMgmtService.getPassengerManifest(id, req.user?.role, req.user?.companyId);
         return res.status(200).json({ count: manifest.length, passengers: manifest });
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
     }
 });

@@ -3,8 +3,9 @@ import { ParcelEntity, ParcelStatus } from '../domain/ParcelEntity';
 import { PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
-import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
+import { UserEntity, UserRole } from '../../../infrastructure/database/entities/UserEntity';
 import { logger } from '../../../infrastructure/logger';
+import { assertSameCompany } from '../../../infrastructure/auth/companyScope';
 
 export interface CreateParcelDTO {
     tripId: string;
@@ -19,6 +20,8 @@ export interface CreateParcelDTO {
     totalPrice: number;
     paymentMethod?: string; // CASH | DIGITAL
     sellerId?: string;      // ID del vendedor que registra la encomienda
+    actorRole?: UserRole;
+    actorCompanyId?: string;
 }
 
 export interface UpdateParcelStatusDTO {
@@ -37,8 +40,14 @@ export class ParcelService {
         const parcelRepo   = AppDataSource.getRepository(ParcelEntity);
 
         // 1. Validar viaje
-        const trip = await tripRepo.findOne({ where: { id: data.tripId } });
+        const trip = await tripRepo.findOne({
+            where: { id: data.tripId },
+            relations: { route: { company: true } },
+        });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        // Staff (ADMIN/AGENCY_SELLER/DRIVER) solo registra encomiendas de SU empresa
+        assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
 
         // 2. Validar waypoints
         const startWaypoint = await waypointRepo.findOne({ where: { id: data.startWaypointId } });
@@ -97,7 +106,16 @@ export class ParcelService {
     /**
      * Obtiene todas las encomiendas de un viaje específico.
      */
-    public async getParcelsByTrip(tripId: string): Promise<ParcelEntity[]> {
+    public async getParcelsByTrip(tripId: string, actorRole?: UserRole, actorCompanyId?: string): Promise<ParcelEntity[]> {
+        const tripRepo = AppDataSource.getRepository(TripEntity);
+        const trip = await tripRepo.findOne({
+            where: { id: tripId },
+            relations: { route: { company: true } },
+        });
+        if (!trip) throw new Error('Viaje no encontrado');
+
+        assertSameCompany(actorRole, actorCompanyId, trip.route.company.id);
+
         const parcelRepo = AppDataSource.getRepository(ParcelEntity);
 
         return parcelRepo.find({
@@ -114,11 +132,21 @@ export class ParcelService {
     /**
      * Actualiza el estado de una encomienda (tracking).
      */
-    public async updateParcelStatus(parcelId: string, dto: UpdateParcelStatusDTO): Promise<ParcelEntity> {
+    public async updateParcelStatus(
+        parcelId: string,
+        dto: UpdateParcelStatusDTO,
+        actorRole?: UserRole,
+        actorCompanyId?: string,
+    ): Promise<ParcelEntity> {
         const parcelRepo = AppDataSource.getRepository(ParcelEntity);
 
-        const parcel = await parcelRepo.findOne({ where: { id: parcelId } });
+        const parcel = await parcelRepo.findOne({
+            where: { id: parcelId },
+            relations: { trip: { route: { company: true } } },
+        });
         if (!parcel) throw new Error('Encomienda no encontrada');
+
+        assertSameCompany(actorRole, actorCompanyId, parcel.trip.route.company.id);
 
         parcel.status = dto.status;
         await parcelRepo.save(parcel);
@@ -130,7 +158,7 @@ export class ParcelService {
     /**
      * Obtiene una encomienda por ID con todas sus relaciones.
      */
-    public async getParcelById(parcelId: string): Promise<ParcelEntity> {
+    public async getParcelById(parcelId: string, actorRole?: UserRole, actorCompanyId?: string): Promise<ParcelEntity> {
         const parcelRepo = AppDataSource.getRepository(ParcelEntity);
 
         const parcel = await parcelRepo.findOne({
@@ -143,6 +171,9 @@ export class ParcelService {
         });
 
         if (!parcel) throw new Error('Encomienda no encontrada');
+
+        assertSameCompany(actorRole, actorCompanyId, parcel.trip.route.company.id);
+
         return parcel;
     }
 }

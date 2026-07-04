@@ -4,6 +4,7 @@
  */
 
 import { PaymentStatus } from '../domain/BookingEntity';
+import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -66,9 +67,10 @@ import { BookingService } from '../application/BookingService';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
+const mockCompany = { id: 'company-001', tradeName: 'Transportes Lima' };
 const mockTrip = {
     id: 'trip-001',
-    route: { id: 'route-001' },
+    route: { id: 'route-001', company: mockCompany },
     status: 'SCHEDULED',
 };
 
@@ -268,37 +270,43 @@ describe('BookingService', () => {
     });
 
     describe('cancelBooking()', () => {
-        it('debe cancelar una reserva PENDING_CASH', async () => {
+        it('debe permitir al dueño de la reserva cancelar una PENDING_CASH', async () => {
             const booking = {
                 id: 'b1',
                 paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
             };
             mockBookingRepo.findOne.mockResolvedValue(booking);
             mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
 
-            const result = await bookingService.cancelBooking('b1');
+            const result = await bookingService.cancelBooking('b1', 'owner-1');
             expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
         });
 
-        it('debe cancelar una reserva PENDING_DIGITAL', async () => {
+        it('debe permitir al dueño de la reserva cancelar una PENDING_DIGITAL', async () => {
             const booking = {
                 id: 'b1',
                 paymentStatus: PaymentStatus.PENDING_DIGITAL,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
             };
             mockBookingRepo.findOne.mockResolvedValue(booking);
             mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
 
-            const result = await bookingService.cancelBooking('b1');
+            const result = await bookingService.cancelBooking('b1', 'owner-1');
             expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
         });
 
-        it('no debe cancelar una reserva ya PAID_DIGITAL', async () => {
+        it('no debe cancelar una reserva ya PAID_DIGITAL (aunque sea el dueño)', async () => {
             mockBookingRepo.findOne.mockResolvedValue({
                 id: 'b1',
                 paymentStatus: PaymentStatus.PAID_DIGITAL,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
             });
 
-            await expect(bookingService.cancelBooking('b1'))
+            await expect(bookingService.cancelBooking('b1', 'owner-1'))
                 .rejects.toThrow('No se puede cancelar');
         });
 
@@ -307,6 +315,92 @@ describe('BookingService', () => {
 
             await expect(bookingService.cancelBooking('no-existe'))
                 .rejects.toThrow('Reserva no encontrada');
+        });
+
+        // ─── Multi-tenancy: quién puede cancelar la reserva de otro ──────────
+
+        it('NO debe permitir que un usuario que no es el dueño ni staff cancele la reserva', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({
+                id: 'b1',
+                paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
+            });
+
+            await expect(bookingService.cancelBooking('b1', 'otro-usuario-cualquiera'))
+                .rejects.toThrow('No tienes permisos');
+        });
+
+        it('debe permitir a un ADMIN de la MISMA empresa del viaje cancelar la reserva de otro usuario', async () => {
+            const booking = {
+                id: 'b1',
+                paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1' },
+                trip: mockTrip, // company-001
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
+
+            const result = await bookingService.cancelBooking('b1', 'admin-id', UserRole.ADMIN, 'company-001');
+            expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
+        });
+
+        it('NO debe permitir a un ADMIN de OTRA empresa cancelar la reserva', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({
+                id: 'b1',
+                paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1' },
+                trip: mockTrip, // company-001
+            });
+
+            await expect(
+                bookingService.cancelBooking('b1', 'admin-otra-empresa', UserRole.ADMIN, 'otra-empresa')
+            ).rejects.toThrow('No tienes permisos');
+        });
+
+        it('SUPER_ADMIN debe poder cancelar cualquier reserva sin importar la empresa', async () => {
+            const booking = {
+                id: 'b1',
+                paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
+
+            const result = await bookingService.cancelBooking('b1', 'super-admin-id', UserRole.SUPER_ADMIN, undefined);
+            expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
+        });
+    });
+
+    describe('scoping por empresa (createCashBooking)', () => {
+        it('NO debe permitir que un AGENCY_SELLER de otra empresa venda pasajes en este viaje', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip); // company-001
+
+            await expect(bookingService.createCashBooking({
+                ...baseBookingData,
+                actorRole: UserRole.AGENCY_SELLER,
+                actorCompanyId: 'otra-empresa',
+            })).rejects.toThrow('otra empresa');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('debe permitir que un PASSENGER autocompre en cualquier empresa (sin scoping)', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+            mockBookingRepo.create.mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            await expect(bookingService.createCashBooking({
+                ...baseBookingData,
+                actorRole: UserRole.PASSENGER,
+                actorCompanyId: undefined,
+            })).resolves.not.toThrow();
         });
     });
 });

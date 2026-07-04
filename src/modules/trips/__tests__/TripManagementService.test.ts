@@ -5,6 +5,7 @@
 
 import { TripStatus } from '../domain/TripEntity';
 import { PaymentStatus } from '../../bookings/domain/BookingEntity';
+import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ describe('TripManagementService', () => {
 
     describe('updateStatus()', () => {
         it('debe cambiar de SCHEDULED a BOARDING', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
             mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
 
             const result = await service.updateStatus({ tripId: 't1', status: TripStatus.BOARDING });
@@ -196,7 +197,7 @@ describe('TripManagementService', () => {
         });
 
         it('debe cambiar de BOARDING a IN_TRANSIT', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING, route: mockRoute });
             mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT });
 
             const result = await service.updateStatus({ tripId: 't1', status: TripStatus.IN_TRANSIT });
@@ -204,7 +205,7 @@ describe('TripManagementService', () => {
         });
 
         it('debe cambiar de IN_TRANSIT a COMPLETED', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT, route: mockRoute });
             mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.COMPLETED });
 
             const result = await service.updateStatus({ tripId: 't1', status: TripStatus.COMPLETED });
@@ -212,21 +213,21 @@ describe('TripManagementService', () => {
         });
 
         it('NO debe permitir cambiar de COMPLETED a ningún estado', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.COMPLETED });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.COMPLETED, route: mockRoute });
 
             await expect(service.updateStatus({ tripId: 't1', status: TripStatus.SCHEDULED }))
                 .rejects.toThrow('No se puede cambiar');
         });
 
         it('NO debe permitir cambiar de CANCELLED a ningún estado', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.CANCELLED });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.CANCELLED, route: mockRoute });
 
             await expect(service.updateStatus({ tripId: 't1', status: TripStatus.BOARDING }))
                 .rejects.toThrow('No se puede cambiar');
         });
 
         it('NO debe permitir saltar de SCHEDULED a COMPLETED directamente', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
 
             await expect(service.updateStatus({ tripId: 't1', status: TripStatus.COMPLETED }))
                 .rejects.toThrow('No se puede cambiar');
@@ -241,7 +242,7 @@ describe('TripManagementService', () => {
 
         it('debe emitir "boarding_started" por socket al pasar a BOARDING', async () => {
             const departureTime = new Date('2026-07-10T20:00:00.000Z');
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, departureTime });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, departureTime, route: mockRoute });
             mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING, departureTime });
 
             await service.updateStatus({ tripId: 't1', status: TripStatus.BOARDING });
@@ -257,7 +258,7 @@ describe('TripManagementService', () => {
         });
 
         it('NO debe emitir "boarding_started" en otras transiciones (solo trip_status_changed)', async () => {
-            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING, route: mockRoute });
             mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.IN_TRANSIT });
 
             await service.updateStatus({ tripId: 't1', status: TripStatus.IN_TRANSIT });
@@ -298,6 +299,7 @@ describe('TripManagementService', () => {
                 },
             ];
             mockBookingRepo.find.mockResolvedValue(bookings);
+            mockTripRepo.findOne.mockResolvedValue({ id: 'trip-001', route: mockRoute });
 
             const manifest = await service.getPassengerManifest('trip-001');
 
@@ -309,9 +311,70 @@ describe('TripManagementService', () => {
 
         it('debe retornar lista vacía si no hay pasajeros', async () => {
             mockBookingRepo.find.mockResolvedValue([]);
+            mockTripRepo.findOne.mockResolvedValue({ id: 'trip-vacio', route: mockRoute });
 
             const manifest = await service.getPassengerManifest('trip-vacio');
             expect(manifest).toHaveLength(0);
+        });
+
+        it('debe lanzar error si el viaje no existe', async () => {
+            mockTripRepo.findOne.mockResolvedValue(null);
+
+            await expect(service.getPassengerManifest('no-existe'))
+                .rejects.toThrow('Viaje no encontrado');
+        });
+    });
+
+    // ─── Multi-tenancy: scoping por empresa ──────────────────────────────────
+
+    describe('scoping por empresa', () => {
+        it('NO debe permitir que un ADMIN de otra empresa vea el manifiesto', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ id: 'trip-001', route: mockRoute }); // company-001
+            mockBookingRepo.find.mockResolvedValue([]);
+
+            await expect(
+                service.getPassengerManifest('trip-001', UserRole.ADMIN, 'otra-empresa')
+            ).rejects.toThrow('otra empresa');
+        });
+
+        it('NO debe permitir que un AGENCY_SELLER de otra empresa autorice el abordaje', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
+
+            await expect(
+                service.updateStatus({ tripId: 't1', status: TripStatus.BOARDING, actorRole: UserRole.AGENCY_SELLER, actorCompanyId: 'otra-empresa' })
+            ).rejects.toThrow('otra empresa');
+        });
+
+        it('SUPER_ADMIN debe poder acceder al manifiesto de cualquier empresa', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ id: 'trip-001', route: mockRoute });
+            mockBookingRepo.find.mockResolvedValue([]);
+
+            await expect(
+                service.getPassengerManifest('trip-001', UserRole.SUPER_ADMIN, 'otra-empresa-cualquiera')
+            ).resolves.not.toThrow();
+        });
+
+        it('debe permitir a un ADMIN de la MISMA empresa ver el manifiesto', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ id: 'trip-001', route: mockRoute }); // company-001
+            mockBookingRepo.find.mockResolvedValue([]);
+
+            await expect(
+                service.getPassengerManifest('trip-001', UserRole.ADMIN, 'company-001')
+            ).resolves.not.toThrow();
+        });
+
+        it('NO debe permitir crear un viaje con una ruta de otra empresa (ADMIN)', async () => {
+            mockRouteRepo.findOne.mockResolvedValue(mockRoute); // company-001
+            mockVehicleRepo.findOne.mockResolvedValue(mockVehicle); // company-001
+            mockTripQB.getOne.mockResolvedValue(null);
+
+            await expect(service.create({
+                routeId: 'route-001',
+                vehicleId: 'vehicle-001',
+                departureTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                actorRole: UserRole.ADMIN,
+                actorCompanyId: 'otra-empresa',
+            })).rejects.toThrow('otra empresa');
         });
     });
 });

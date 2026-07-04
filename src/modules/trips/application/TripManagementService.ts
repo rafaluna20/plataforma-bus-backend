@@ -6,18 +6,22 @@ import { UserEntity, UserRole } from '../../../infrastructure/database/entities/
 import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { logger } from '../../../infrastructure/logger';
 import { emitToTrip } from '../../../infrastructure/sockets/SocketBus';
+import { assertSameCompany } from '../../../infrastructure/auth/companyScope';
 
 export interface CreateTripDTO {
     routeId: string;
     vehicleId: string;
     departureTime: Date;
     driverId?: string; // Conductor asignado (opcional)
+    actorRole?: UserRole;
+    actorCompanyId?: string;
 }
 
 export interface UpdateTripStatusDTO {
     tripId: string;
     status: TripStatus;
     actorRole?: UserRole; // Rol del usuario que ejecuta la transición (valida permisos finos por estado destino)
+    actorCompanyId?: string;
 }
 
 // Roles autorizados a establecer cada estado destino. AGENCY_SELLER puede autorizar
@@ -122,6 +126,9 @@ export class TripManagementService {
             throw new Error('El vehículo y la ruta deben pertenecer a la misma empresa');
         }
 
+        // Un ADMIN solo puede programar viajes para SU propia empresa (SUPER_ADMIN sin restricción)
+        assertSameCompany(data.actorRole, data.actorCompanyId, route.company.id);
+
         // Validar que el vehículo esté activo
         if (!vehicle.isActive) {
             throw new Error(`El vehículo ${vehicle.plateNumber} está inactivo y no puede ser asignado a un viaje`);
@@ -172,13 +179,15 @@ export class TripManagementService {
      */
     public async update(
         tripId: string,
-        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null },
+        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null; actorRole?: UserRole; actorCompanyId?: string },
     ): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({
             where: { id: tripId },
             relations: { route: { company: true }, vehicle: true, driver: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
 
         // Solo permitir editar viajes PROGRAMADOS
         if (trip.status !== TripStatus.SCHEDULED) {
@@ -254,8 +263,13 @@ export class TripManagementService {
 
     /** Actualizar el estado de un viaje (Programado → Abordando → En Tránsito → Finalizado) */
     public async updateStatus(data: UpdateTripStatusDTO): Promise<TripEntity> {
-        const trip = await this.tripRepo.findOne({ where: { id: data.tripId } });
+        const trip = await this.tripRepo.findOne({
+            where: { id: data.tripId },
+            relations: { route: { company: true } },
+        });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
 
         // Validar transiciones de estado válidas
         const validTransitions: Record<TripStatus, TripStatus[]> = {
@@ -311,8 +325,12 @@ export class TripManagementService {
     public async findByCompany(
         companyId: string,
         status?: TripStatus,
-        options: PaginationOptions = {}
+        options: PaginationOptions = {},
+        actorRole?: UserRole,
+        actorCompanyId?: string,
     ): Promise<{ data: TripEntity[]; total: number; page: number; totalPages: number }> {
+        assertSameCompany(actorRole, actorCompanyId, companyId);
+
         const page = Math.max(1, options.page || 1);
         const limit = Math.min(100, Math.max(1, options.limit || 20));
         const skip = (page - 1) * limit;
@@ -381,12 +399,14 @@ export class TripManagementService {
     }
 
     /** Obtener viaje por ID con detalle completo (ruta, waypoints, vehículo) */
-    public async findById(id: string): Promise<TripEntity> {
+    public async findById(id: string, actorRole?: UserRole, actorCompanyId?: string): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({
             where: { id },
             relations: { route: { waypoints: { station: true }, company: true }, vehicle: true, driver: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        assertSameCompany(actorRole, actorCompanyId, trip.route.company.id);
 
         // Ordenar waypoints por stop_order
         if (trip.route?.waypoints) {
@@ -397,7 +417,15 @@ export class TripManagementService {
     }
 
     /** Obtener el manifiesto de pasajeros de un viaje (CORREGIDO: incluye todos los estados activos) */
-    public async getPassengerManifest(tripId: string) {
+    public async getPassengerManifest(tripId: string, actorRole?: UserRole, actorCompanyId?: string) {
+        const trip = await this.tripRepo.findOne({
+            where: { id: tripId },
+            relations: { route: { company: true } },
+        });
+        if (!trip) throw new Error('Viaje no encontrado');
+
+        assertSameCompany(actorRole, actorCompanyId, trip.route.company.id);
+
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
 
         // CORRECCIÓN: Incluir PENDING_CASH, PAID_DIGITAL y PAID (todos los estados activos)

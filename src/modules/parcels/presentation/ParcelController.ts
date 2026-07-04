@@ -49,6 +49,8 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             totalPrice:     parseFloat(totalPrice),
             paymentMethod,
             sellerId:       req.user?.sub,   // Vendedor autenticado
+            actorRole:      req.user?.role,
+            actorCompanyId: req.user?.companyId,
         };
 
         const parcel = await parcelService.createParcel(dto);
@@ -77,6 +79,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             parcel,
         });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado') || error.message?.includes('inválido') || error.message?.includes('origen')) {
             return res.status(400).json({ error: error.message });
         }
@@ -94,13 +97,15 @@ router.get('/trip/:tripId', async (req: Request, res: Response, next: NextFuncti
         const tripId = req.params.tripId as string;
         if (!tripId) return res.status(400).json({ error: 'tripId es requerido' });
 
-        const parcels = await parcelService.getParcelsByTrip(tripId);
+        const parcels = await parcelService.getParcelsByTrip(tripId, req.user?.role, req.user?.companyId);
 
         return res.status(200).json({
             parcels,
             total: parcels.length,
         });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
     }
 });
@@ -112,9 +117,10 @@ router.get('/trip/:tripId', async (req: Request, res: Response, next: NextFuncti
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const parcel = await parcelService.getParcelById(req.params.id as string);
+        const parcel = await parcelService.getParcelById(req.params.id as string, req.user?.role, req.user?.companyId);
         return res.status(200).json({ parcel });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrada')) {
             return res.status(404).json({ error: error.message });
         }
@@ -139,7 +145,12 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
             });
         }
 
-        const parcel = await parcelService.updateParcelStatus(req.params.id as string, { status });
+        const parcel = await parcelService.updateParcelStatus(
+            req.params.id as string,
+            { status },
+            req.user?.role,
+            req.user?.companyId,
+        );
 
         // Auditoría
         await AuditLogService.log({
@@ -158,6 +169,7 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
             parcel,
         });
     } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrada')) {
             return res.status(404).json({ error: error.message });
         }

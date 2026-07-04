@@ -6,6 +6,8 @@ import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
 import { PaymentGateway, PaymentDetails } from '../../payments/application/ports/PaymentGateway';
 import { logger } from '../../../infrastructure/logger';
+import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
+import { assertSameCompany } from '../../../infrastructure/auth/companyScope';
 
 export interface CreateBookingDTO {
     tripId: string;
@@ -16,6 +18,8 @@ export interface CreateBookingDTO {
     endWaypointId: string;
     seatId: string;
     userId?: string; // ID del usuario autenticado (opcional para reservas en mostrador)
+    actorRole?: UserRole; // Rol de quien crea la reserva (staff queda confinado a su empresa; PASSENGER no)
+    actorCompanyId?: string;
 }
 
 export class BookingService {
@@ -44,9 +48,13 @@ export class BookingService {
         // 1. Obtener Viaje y Tramos Solicitados
         const trip = await tripRepo.findOne({
             where: { id: data.tripId },
-            relations: { route: true, vehicle: true },
+            relations: { route: { company: true }, vehicle: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        // Staff (ADMIN/AGENCY_SELLER/DRIVER) solo vende pasajes de SU empresa;
+        // un PASSENGER autocomprando puede elegir cualquier empresa del marketplace.
+        assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
 
         const startWaypoint = await waypointRepo.findOne({ where: { id: data.startWaypointId } });
         const endWaypoint = await waypointRepo.findOne({ where: { id: data.endWaypointId } });
@@ -249,15 +257,35 @@ export class BookingService {
     }
 
     /**
-     * Cancelar una reserva (solo si está PENDING_CASH o PENDING_DIGITAL)
+     * Cancelar una reserva (solo si está PENDING_CASH o PENDING_DIGITAL).
+     * Permitido para: (a) el usuario dueño de la reserva, o (b) staff
+     * (ADMIN/SUPER_ADMIN/AGENCY_SELLER/DRIVER) de la MISMA empresa del viaje.
+     * Antes, `userId` se recibía pero nunca se verificaba — cualquier usuario
+     * autenticado podía cancelar cualquier reserva de cualquier empresa.
      */
-    public async cancelBooking(bookingId: string, userId?: string): Promise<BookingEntity> {
+    public async cancelBooking(
+        bookingId: string,
+        userId?: string,
+        actorRole?: UserRole,
+        actorCompanyId?: string,
+    ): Promise<BookingEntity> {
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
         const booking = await bookingRepo.findOne({
             where: { id: bookingId },
+            relations: { user: true, trip: { route: { company: true } } },
         });
 
         if (!booking) throw new Error('Reserva no encontrada');
+
+        const isOwner = !!userId && booking.user?.id === userId;
+        const staffRoles = [UserRole.ADMIN, UserRole.AGENCY_SELLER, UserRole.DRIVER];
+        const isStaffOfSameCompany =
+            actorRole === UserRole.SUPER_ADMIN ||
+            (!!actorRole && staffRoles.includes(actorRole) && actorCompanyId === booking.trip.route.company.id);
+
+        if (!isOwner && !isStaffOfSameCompany) {
+            throw new Error('No tienes permisos para cancelar esta reserva');
+        }
 
         const cancellableStatuses = [PaymentStatus.PENDING_CASH, PaymentStatus.PENDING_DIGITAL];
         if (!cancellableStatuses.includes(booking.paymentStatus)) {
