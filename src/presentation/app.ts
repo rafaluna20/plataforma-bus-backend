@@ -1,5 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { randomUUID } from 'crypto';
@@ -55,6 +56,17 @@ class App {
     }
 
     private middlewares(): void {
+        // 0. Cabeceras de seguridad HTTP (helmet). CSP desactivado porque
+        // Swagger UI (/api/docs) usa scripts/estilos inline que el CSP por
+        // defecto de helmet bloquearía; ajustar una política a medida es
+        // trabajo aparte si se quiere endurecer también esa página.
+        // crossOriginResourcePolicy en 'cross-origin' porque esta API la
+        // consume el frontend desde otro origen (Vercel), no el mismo host.
+        this.express.use(helmet({
+            contentSecurityPolicy: false,
+            crossOriginResourcePolicy: { policy: 'cross-origin' },
+        }));
+
         // 1. CORS configurado correctamente (SIEMPRE antes del rate limiter)
         const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3001,http://localhost:3002').split(',').map(o => o.trim());
         this.express.use(cors({
