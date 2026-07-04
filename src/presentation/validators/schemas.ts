@@ -4,7 +4,7 @@
  */
 import { z } from 'zod';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
-import { TripStatus } from '../../infrastructure/database/entities/TripEntity';
+import { TripStatus } from '../../modules/trips/domain/TripEntity';
 
 // ─── Auth Schemas ─────────────────────────────────────────────────────────────
 

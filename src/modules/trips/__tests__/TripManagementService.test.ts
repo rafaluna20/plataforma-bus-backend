@@ -3,8 +3,8 @@
  * Verifica la lógica de programación de viajes y transiciones de estado
  */
 
-import { TripStatus } from '../../infrastructure/database/entities/TripEntity';
-import { PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { TripStatus } from '../domain/TripEntity';
+import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ const mockBookingRepo = {
     find: jest.fn(),
 };
 
-jest.mock('../../infrastructure/database/data-source', () => ({
+jest.mock('../../../infrastructure/database/data-source', () => ({
     AppDataSource: {
         getRepository: jest.fn((entity) => {
             const name = entity?.name || '';
@@ -51,16 +51,16 @@ jest.mock('../../infrastructure/database/data-source', () => ({
     },
 }));
 
-jest.mock('../../infrastructure/logger', () => ({
+jest.mock('../../../infrastructure/logger', () => ({
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
 const mockEmitToTrip = jest.fn();
-jest.mock('../../infrastructure/sockets/SocketBus', () => ({
+jest.mock('../../../infrastructure/sockets/SocketBus', () => ({
     emitToTrip: (...args: unknown[]) => mockEmitToTrip(...args),
 }));
 
-import { TripManagementService } from '../../application/services/TripManagementService';
+import { TripManagementService } from '../application/TripManagementService';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

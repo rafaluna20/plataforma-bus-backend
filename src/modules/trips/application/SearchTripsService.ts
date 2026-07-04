@@ -1,7 +1,7 @@
-import { AppDataSource } from '../../infrastructure/database/data-source';
-import { TripEntity, TripStatus } from '../../infrastructure/database/entities/TripEntity';
-import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
-import { cache, CacheKeys, CacheTTL } from '../../infrastructure/cache/RedisCache';
+import { AppDataSource } from '../../../infrastructure/database/data-source';
+import { TripEntity, TripStatus } from '../domain/TripEntity';
+import { BookingEntity, PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { cache, CacheKeys, CacheTTL } from '../../../infrastructure/cache/RedisCache';
 
 export interface SearchTripsDTO {
     originCity?: string;

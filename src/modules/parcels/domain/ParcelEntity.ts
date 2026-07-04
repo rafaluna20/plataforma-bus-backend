@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { TripEntity } from '../../../infrastructure/database/entities/TripEntity';
+import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
 import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
 import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';

@@ -16,16 +16,15 @@ declare global {
 
 // Controllers
 import authRoutes from './controllers/AuthController';
-import tripRoutes from './controllers/TripController';
 import bookingRoutes from './controllers/BookingController';
 import companyRoutes from './controllers/CompanyController';
 import vehicleRoutes from './controllers/VehicleController';
 import routeRoutes from './controllers/RouteController';
-import tripMgmtRoutes from './controllers/TripManagementController';
 import adminRoutes from './controllers/AdminController';
 import paymentRoutes from './controllers/PaymentController';
 import brandingRoutes from './controllers/CompanyBrandingController';
 import { parcelRoutes } from '../modules/parcels';
+import { tripRoutes, tripMgmtRoutes } from '../modules/trips';
 
 // Middlewares
 import { authenticate, authorize } from './middlewares/auth.middleware';

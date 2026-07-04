@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { SearchTripsService, SearchTripsResult } from '../../application/services/SearchTripsService';
-import { AppDataSource } from '../../infrastructure/database/data-source';
-import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { SearchTripsService, SearchTripsResult } from '../application/SearchTripsService';
+import { AppDataSource } from '../../../infrastructure/database/data-source';
+import { BookingEntity, PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
 
 const router = Router();
 const searchTripsService = new SearchTripsService();
@@ -59,7 +59,7 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
     try {
         const { tripId } = req.params as { tripId: string };
         const tripRepo = AppDataSource.getRepository(
-            (await import('../../infrastructure/database/entities/TripEntity')).TripEntity
+            (await import('../domain/TripEntity')).TripEntity
         );
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
 

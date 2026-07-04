@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { RouteEntity } from './RouteEntity';
-import { VehicleEntity } from './VehicleEntity';
-import { UserEntity } from './UserEntity';
+import { RouteEntity } from '../../../infrastructure/database/entities/RouteEntity';
+import { VehicleEntity } from '../../../infrastructure/database/entities/VehicleEntity';
+import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
 
 export enum TripStatus {
     SCHEDULED = 'SCHEDULED',

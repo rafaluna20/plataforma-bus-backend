@@ -1,5 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Unique, DeleteDateColumn } from 'typeorm';
-import { TripEntity } from './TripEntity';
+// Import directo al domain (no al barrel del módulo) para evitar cargar
+// TripManagementController/TripManagementService solo por la entidad, y
+// prevenir un ciclo: TripManagementService también importa BookingEntity.
+import { TripEntity } from '../../../modules/trips/domain/TripEntity';
 import { RouteWaypointEntity } from './RouteWaypointEntity';
 import { UserEntity } from './UserEntity';
 

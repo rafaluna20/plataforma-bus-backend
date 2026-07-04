@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../logger';
 import { TokenPayload } from '../../application/services/AuthService';
 import { UserRole } from '../database/entities/UserEntity';
-import { TripManagementService } from '../../application/services/TripManagementService';
+import { TripManagementService } from '../../modules/trips';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_THIS_SECRET_IN_PRODUCTION';
 const tripMgmtService = new TripManagementService();

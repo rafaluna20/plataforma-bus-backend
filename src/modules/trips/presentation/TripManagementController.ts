@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { TripManagementService } from '../../application/services/TripManagementService';
-import { authorize } from '../middlewares/auth.middleware';
-import { UserRole } from '../../infrastructure/database/entities/UserEntity';
+import { TripManagementService } from '../application/TripManagementService';
+import { authorize } from '../../../presentation/middlewares/auth.middleware';
+import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 
 const router = Router();
 const tripMgmtService = new TripManagementService();
