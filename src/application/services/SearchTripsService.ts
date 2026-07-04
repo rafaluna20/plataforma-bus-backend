@@ -77,8 +77,9 @@ export class SearchTripsService {
     }
 
     /**
-     * Busca viajes programados que pasen por el origen y destino en el orden correcto
-     * y en la fecha solicitada. Usa SQL con JOINs en lugar de filtrado en memoria.
+     * Busca viajes programados, filtrando por origen/destino y/o fecha de forma
+     * independiente entre sí: cada filtro se aplica si está presente, sin exigir
+     * que los tres (origen + destino + fecha) vengan juntos.
      */
     public async execute(params: SearchTripsDTO) {
         const { originCity, destinationCity, travelDate } = params;
@@ -87,11 +88,12 @@ export class SearchTripsService {
         const skip = (page - 1) * limit;
 
         const tripRepository = AppDataSource.getRepository(TripEntity);
+        const hasRouteFilter = !!(originCity && destinationCity);
 
-        // Intentar obtener del caché si hay parámetros de búsqueda completos
-        if (originCity && destinationCity && travelDate) {
+        // El caché solo aplica a búsquedas completas (origen + destino + fecha)
+        if (hasRouteFilter && travelDate) {
             const dateStr = travelDate.toISOString().split('T')[0];
-            const cacheKey = CacheKeys.tripSearch(originCity, destinationCity, dateStr, page, limit);
+            const cacheKey = CacheKeys.tripSearch(originCity!, destinationCity!, dateStr, page, limit);
             const cached = await cache.get<SearchTripsResult>(cacheKey);
             if (cached) {
                 // Los asientos disponibles se recalculan siempre en vivo (no se cachean)
@@ -101,98 +103,56 @@ export class SearchTripsService {
             }
         }
 
-        // Si no hay parámetros de búsqueda, retornar los próximos viajes disponibles
-        // (opcionalmente filtrados por empresa y/o tipo de vehículo)
-        if (!originCity || !destinationCity || !travelDate) {
-            const qb = tripRepository
-                .createQueryBuilder('trip')
-                .innerJoinAndSelect('trip.route', 'route')
-                .innerJoinAndSelect('route.company', 'company')
-                .innerJoinAndSelect('route.waypoints', 'allWaypoints')
-                .innerJoinAndSelect('allWaypoints.station', 'allStations')
-                .innerJoinAndSelect('trip.vehicle', 'vehicle')
-                .where('trip.status IN (:...statuses)', {
-                    statuses: [TripStatus.SCHEDULED, TripStatus.BOARDING],
-                })
-                .andWhere('trip.departure_time >= :now', { now: new Date() })
-                .orderBy('trip.departure_time', 'ASC')
-                .skip(skip)
-                .take(limit);
-
-            // Filtro por empresa
-            if (params.companyId) {
-                qb.andWhere('company.id = :companyId', { companyId: params.companyId });
-            }
-
-            // Filtro por tipo de vehículo
-            if (params.vehicleType) {
-                qb.andWhere('vehicle.vehicle_type = :vehicleType', { vehicleType: params.vehicleType });
-            }
-
-            const [trips, total] = await qb.getManyAndCount();
-
-            trips.forEach(trip => {
-                if (trip.route?.waypoints) {
-                    trip.route.waypoints.sort((a, b) => a.stopOrder - b.stopOrder);
-                }
-            });
-
-            await this.attachAvailableSeats(trips);
-
-            return {
-                data: trips,
-                total,
-                page,
-                totalPages: Math.ceil(total / limit),
-            };
-        }
-
-        // Determinar inicio y fin del día para la búsqueda
-        const startOfDay = new Date(travelDate);
-        startOfDay.setHours(0, 0, 0, 0);
-
-        const endOfDay = new Date(travelDate);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        /**
-         * CORRECCIÓN: Búsqueda con SQL usando doble JOIN a route_waypoints.
-         * Esto evita cargar todos los viajes en memoria y filtrar en Node.js.
-         *
-         * La query verifica que:
-         * 1. Exista un waypoint de ORIGEN con la ciudad solicitada
-         * 2. Exista un waypoint de DESTINO con la ciudad solicitada
-         * 3. El stop_order del origen sea MENOR que el del destino (dirección correcta)
-         */
-        const query = tripRepository
+        const qb = tripRepository
             .createQueryBuilder('trip')
             .innerJoinAndSelect('trip.route', 'route')
             .innerJoinAndSelect('route.company', 'company')
             .innerJoinAndSelect('route.waypoints', 'allWaypoints')
             .innerJoinAndSelect('allWaypoints.station', 'allStations')
             .innerJoinAndSelect('trip.vehicle', 'vehicle')
-            // JOIN para el waypoint de ORIGEN
-            .innerJoin('route.waypoints', 'originWp')
-            .innerJoin('originWp.station', 'originStation')
-            // JOIN para el waypoint de DESTINO
-            .innerJoin('route.waypoints', 'destWp')
-            .innerJoin('destWp.station', 'destStation')
-            // Filtros de búsqueda
             .where('trip.status IN (:...statuses)', {
                 statuses: [TripStatus.SCHEDULED, TripStatus.BOARDING],
             })
-            .andWhere('trip.departure_time BETWEEN :startOfDay AND :endOfDay', {
-                startOfDay,
-                endOfDay,
-            })
-            .andWhere('LOWER(originStation.city) = LOWER(:originCity)', { originCity })
-            .andWhere('LOWER(destStation.city) = LOWER(:destinationCity)', { destinationCity })
-            // Garantizar que el origen esté ANTES que el destino en la ruta
-            .andWhere('originWp.stop_order < destWp.stop_order')
             .orderBy('trip.departure_time', 'ASC')
             .skip(skip)
             .take(limit);
 
-        const [trips, total] = await query.getManyAndCount();
+        if (travelDate) {
+            const startOfDay = new Date(travelDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(travelDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            qb.andWhere('trip.departure_time BETWEEN :startOfDay AND :endOfDay', { startOfDay, endOfDay });
+        } else {
+            qb.andWhere('trip.departure_time >= :now', { now: new Date() });
+        }
+
+        if (hasRouteFilter) {
+            /**
+             * Doble JOIN a route_waypoints: verifica que exista un waypoint de ORIGEN
+             * con la ciudad solicitada, uno de DESTINO con la ciudad solicitada, y que
+             * el stop_order del origen sea MENOR que el del destino (dirección correcta).
+             */
+            qb.innerJoin('route.waypoints', 'originWp')
+                .innerJoin('originWp.station', 'originStation')
+                .innerJoin('route.waypoints', 'destWp')
+                .innerJoin('destWp.station', 'destStation')
+                .andWhere('LOWER(originStation.city) = LOWER(:originCity)', { originCity })
+                .andWhere('LOWER(destStation.city) = LOWER(:destinationCity)', { destinationCity })
+                .andWhere('originWp.stop_order < destWp.stop_order');
+        }
+
+        // Filtro por empresa
+        if (params.companyId) {
+            qb.andWhere('company.id = :companyId', { companyId: params.companyId });
+        }
+
+        // Filtro por tipo de vehículo
+        if (params.vehicleType) {
+            qb.andWhere('vehicle.vehicle_type = :vehicleType', { vehicleType: params.vehicleType });
+        }
+
+        const [trips, total] = await qb.getManyAndCount();
 
         // Ordenar waypoints por stop_order en cada viaje
         trips.forEach(trip => {
@@ -201,20 +161,24 @@ export class SearchTripsService {
             }
         });
 
-        const result = {
+        await this.attachAvailableSeats(trips);
+
+        const result: SearchTripsResult = {
             data: trips,
             total,
             page,
             totalPages: Math.ceil(total / limit),
-            searchParams: { originCity, destinationCity, travelDate },
+            ...(hasRouteFilter && travelDate
+                ? { searchParams: { originCity: originCity!, destinationCity: destinationCity!, travelDate } }
+                : {}),
         };
 
-        // Guardar en caché por 5 minutos (sin asientos disponibles: se calculan siempre en vivo)
-        const dateStr = travelDate.toISOString().split('T')[0];
-        const cacheKey = CacheKeys.tripSearch(originCity, destinationCity, dateStr, page, limit);
-        await cache.set(cacheKey, result, CacheTTL.TRIP_SEARCH);
-
-        await this.attachAvailableSeats(trips);
+        // Guardar en caché por 5 minutos solo para búsquedas completas (origen + destino + fecha)
+        if (hasRouteFilter && travelDate) {
+            const dateStr = travelDate.toISOString().split('T')[0];
+            const cacheKey = CacheKeys.tripSearch(originCity!, destinationCity!, dateStr, page, limit);
+            await cache.set(cacheKey, result, CacheTTL.TRIP_SEARCH);
+        }
 
         return result;
     }
