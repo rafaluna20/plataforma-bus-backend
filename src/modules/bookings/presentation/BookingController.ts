@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookingService } from '../application/BookingService';
 import { authenticate } from '../../../presentation/middlewares/auth.middleware';
-import { MockPaymentAdapter } from '../../../infrastructure/payments/MockPaymentAdapter';
+import { MockPaymentAdapter } from '../../payments/infrastructure/MockPaymentAdapter';
 import { AuditLogService } from '../../../application/services/AuditLogService';
 
 

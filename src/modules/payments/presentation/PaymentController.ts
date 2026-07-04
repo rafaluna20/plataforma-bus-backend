@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { PaymentService } from '../../application/services/PaymentService';
-import { validateBody } from '../validators/schemas';
+import { PaymentService } from '../application/PaymentService';
+import { validateBody } from '../../../presentation/validators/schemas';
 
 const router = Router();
 const paymentService = new PaymentService();

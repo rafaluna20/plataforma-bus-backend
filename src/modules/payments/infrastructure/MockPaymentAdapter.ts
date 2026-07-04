@@ -1,4 +1,4 @@
-import { PaymentGateway, PaymentDetails, PaymentResult } from '../../application/ports/PaymentGateway';
+import { PaymentGateway, PaymentDetails, PaymentResult } from '../application/ports/PaymentGateway';
 import crypto from 'crypto';
 
 export class MockPaymentAdapter implements PaymentGateway {

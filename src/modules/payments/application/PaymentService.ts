@@ -1,7 +1,7 @@
-import { AppDataSource } from '../../infrastructure/database/data-source';
-import { BookingEntity, PaymentStatus } from '../../modules/bookings/domain/BookingEntity';
-import { UserEntity } from '../../infrastructure/database/entities/UserEntity';
-import { logger } from '../../infrastructure/logger';
+import { AppDataSource } from '../../../infrastructure/database/data-source';
+import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
+import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
+import { logger } from '../../../infrastructure/logger';
 
 /**
  * Servicio de Pagos — Integración con Culqi (pasarela peruana)

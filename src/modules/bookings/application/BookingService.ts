@@ -4,7 +4,7 @@ import { BookingEntity, PaymentStatus } from '../domain/BookingEntity';
 // TripManagementController/TripManagementService solo por la entidad.
 import { TripEntity } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
-import { PaymentGateway, PaymentDetails } from '../../../application/ports/PaymentGateway';
+import { PaymentGateway, PaymentDetails } from '../../payments/application/ports/PaymentGateway';
 import { logger } from '../../../infrastructure/logger';
 
 export interface CreateBookingDTO {
