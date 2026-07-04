@@ -20,6 +20,19 @@ export interface CreateBookingDTO {
 
 export class BookingService {
 
+    /**
+     * Determina el piso (1 = VIP/abajo, 2 = estándar) de un asiento a partir del
+     * seatTemplate del vehículo. Replica la misma lógica que ya usa el frontend
+     * (SeatMapModal) para que el precio mostrado en la venta coincida con el cobrado.
+     */
+    private getSeatFloor(vehicle: { seatTemplate: any } | null | undefined, seatId: string): 1 | 2 {
+        const template = vehicle?.seatTemplate;
+        if (!template) return 2;
+        const raw = Array.isArray(template) ? template : (template.seats ?? []);
+        const seat = raw.find((s: any) => s.id === seatId);
+        return seat?.floor === 1 ? 1 : 2;
+    }
+
     // ─── Método privado compartido: validar y calcular precio ─────────────────
     private async validateAndCalculate(
         data: CreateBookingDTO,
@@ -31,7 +44,7 @@ export class BookingService {
         // 1. Obtener Viaje y Tramos Solicitados
         const trip = await tripRepo.findOne({
             where: { id: data.tripId },
-            relations: { route: true },
+            relations: { route: true, vehicle: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
 
@@ -65,15 +78,21 @@ export class BookingService {
         }
 
         // 3. Calcular Precio Final sumando los tramos intermedios
+        // Bus de dos pisos: el piso 1 (VIP) usa basePriceFloor1 si está definido;
+        // cualquier otro caso usa basePrice (piso 2 / vehículo de un piso).
         const allRouteWaypoints = await waypointRepo.find({
             where: { route: { id: trip.route.id } },
             order: { stopOrder: 'ASC' },
         });
 
+        const seatFloor = this.getSeatFloor(trip.vehicle, data.seatId);
+
         let calculatedPrice = 0;
         for (const wp of allRouteWaypoints) {
             if (wp.stopOrder > startWaypoint.stopOrder && wp.stopOrder <= endWaypoint.stopOrder) {
-                calculatedPrice += Number(wp.basePrice);
+                calculatedPrice += seatFloor === 1 && wp.basePriceFloor1 != null
+                    ? Number(wp.basePriceFloor1)
+                    : Number(wp.basePrice);
             }
         }
 

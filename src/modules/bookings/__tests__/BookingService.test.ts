@@ -146,6 +146,80 @@ describe('BookingService', () => {
             );
         });
 
+        it('debe cobrar el precio VIP (basePriceFloor1) cuando el asiento pertenece al piso 1 de un bus de dos pisos', async () => {
+            const mockTripTwoFloors = {
+                ...mockTrip,
+                vehicle: {
+                    seatTemplate: {
+                        seats: [
+                            { id: 'A1', floor: 1 },
+                            { id: 'B1', floor: 2 },
+                        ],
+                    },
+                },
+            };
+            const waypointsWithFloor1Price = [
+                { id: 'wp-lima', stopOrder: 1, basePrice: 0, basePriceFloor1: 0 },
+                { id: 'wp-junin', stopOrder: 2, basePrice: 25, basePriceFloor1: 35 },
+                { id: 'wp-huancayo', stopOrder: 3, basePrice: 15, basePriceFloor1: 20 },
+            ];
+
+            mockTripRepo.findOne.mockResolvedValue(mockTripTwoFloors);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(waypointsWithFloor1Price);
+
+            const capturedCreate = jest.fn().mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.create = capturedCreate;
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            // Asiento A1 está en el piso 1 (VIP) → debe usar basePriceFloor1: 35 + 20 = 55
+            await bookingService.createCashBooking({ ...baseBookingData, seatId: 'A1' });
+
+            expect(capturedCreate).toHaveBeenCalledWith(
+                expect.objectContaining({ totalPrice: 55 })
+            );
+        });
+
+        it('debe cobrar el precio estándar (basePrice) cuando el asiento pertenece al piso 2, aunque el bus tenga precio VIP', async () => {
+            const mockTripTwoFloors = {
+                ...mockTrip,
+                vehicle: {
+                    seatTemplate: {
+                        seats: [
+                            { id: 'A1', floor: 1 },
+                            { id: 'B1', floor: 2 },
+                        ],
+                    },
+                },
+            };
+            const waypointsWithFloor1Price = [
+                { id: 'wp-lima', stopOrder: 1, basePrice: 0, basePriceFloor1: 0 },
+                { id: 'wp-junin', stopOrder: 2, basePrice: 25, basePriceFloor1: 35 },
+                { id: 'wp-huancayo', stopOrder: 3, basePrice: 15, basePriceFloor1: 20 },
+            ];
+
+            mockTripRepo.findOne.mockResolvedValue(mockTripTwoFloors);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(waypointsWithFloor1Price);
+
+            const capturedCreate = jest.fn().mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.create = capturedCreate;
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            // Asiento B1 está en el piso 2 (estándar) → debe usar basePrice: 25 + 15 = 40
+            await bookingService.createCashBooking({ ...baseBookingData, seatId: 'B1' });
+
+            expect(capturedCreate).toHaveBeenCalledWith(
+                expect.objectContaining({ totalPrice: 40 })
+            );
+        });
+
         it('debe lanzar error si el viaje no existe', async () => {
             mockTripRepo.findOne.mockResolvedValue(null);
 
