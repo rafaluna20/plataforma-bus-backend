@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { ParcelService, CreateParcelDTO } from '../../application/services/ParcelService';
-import { ParcelStatus } from '../../infrastructure/database/entities/ParcelEntity';
-import { AuditLogService } from '../../application/services/AuditLogService';
+import { ParcelService, CreateParcelDTO } from '../application/ParcelService';
+import { ParcelStatus } from '../domain/ParcelEntity';
+import { AuditLogService } from '../../../application/services/AuditLogService';
 
 const router = Router();
 const parcelService = new ParcelService();

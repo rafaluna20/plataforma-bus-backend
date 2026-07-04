@@ -40,7 +40,9 @@ export const AppDataSource = new DataSource({
     // Usar migraciones: npm run typeorm migration:run
     synchronize: process.env.NODE_ENV !== 'production',
     logging: process.env.NODE_ENV === 'development' ? ['error'] : ['error'],
-    entities: [__dirname + '/entities/*.{js,ts}'],
+    // El segundo patrón recoge entities de módulos ya extraídos a src/modules/*/domain/
+    // (ver src/modules/parcels como piloto de monolito modular).
+    entities: [__dirname + '/entities/*.{js,ts}', __dirname + '/../../modules/*/domain/*.{js,ts}'],
     migrations: [__dirname + '/migrations/*.{js,ts}'],
     subscribers: [],
     /**

@@ -25,7 +25,7 @@ import tripMgmtRoutes from './controllers/TripManagementController';
 import adminRoutes from './controllers/AdminController';
 import paymentRoutes from './controllers/PaymentController';
 import brandingRoutes from './controllers/CompanyBrandingController';
-import parcelRoutes from './controllers/ParcelController';
+import { parcelRoutes } from '../modules/parcels';
 
 // Middlewares
 import { authenticate, authorize } from './middlewares/auth.middleware';

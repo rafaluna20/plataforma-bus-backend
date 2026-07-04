@@ -1,8 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { TripEntity } from './TripEntity';
-import { RouteWaypointEntity } from './RouteWaypointEntity';
-import { PaymentStatus } from './BookingEntity';
-import { UserEntity } from './UserEntity';
+import { TripEntity } from '../../../infrastructure/database/entities/TripEntity';
+import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
+import { PaymentStatus } from '../../../infrastructure/database/entities/BookingEntity';
+import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
 
 export enum ParcelStatus {
     RECEIVED = 'RECEIVED',
