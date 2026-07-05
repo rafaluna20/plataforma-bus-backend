@@ -1,15 +1,21 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { VehicleService } from '../../application/services/VehicleService';
 import { AuditLogService } from '../../application/services/AuditLogService';
+import { authorizeCompany, authorizeOwnCompanyResource } from '../middlewares/auth.middleware';
 
 const router = Router();
 const vehicleService = new VehicleService();
+
+const resolveVehicleCompanyId = async (req: Request) => {
+    const vehicle = await vehicleService.findById(req.params.id as string);
+    return vehicle.company?.id ?? null;
+};
 
 /**
  * POST /api/v1/vehicles
  * Registrar un vehículo nuevo en la flota de una empresa
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl } = req.body;
 
@@ -46,7 +52,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  * GET /api/v1/vehicles/company/:companyId
  * Listar la flota de una empresa
  */
-router.get('/company/:companyId', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/company/:companyId', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.params.companyId as string;
         const vehicles = await vehicleService.findByCompany(companyId);
@@ -70,7 +76,7 @@ router.get('/templates/defaults', async (req: Request, res: Response) => {
  * GET /api/v1/vehicles/:id
  * Obtener detalle de un vehículo (incluye plantilla de asientos)
  */
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const vehicle = await vehicleService.findById(id);
@@ -85,7 +91,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * PUT /api/v1/vehicles/:id
  * Actualizar configuración de vehículo (plantilla de asientos, estado)
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const vehicle = await vehicleService.update(id, req.body);
@@ -113,7 +119,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * PATCH /api/v1/vehicles/:id
  * Actualizar parcialmente un vehículo (alias de PUT, acepta campos opcionales)
  */
-router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const vehicle = await vehicleService.update(id, req.body);
@@ -141,7 +147,7 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
  * DELETE /api/v1/vehicles/:id
  * Eliminar un vehículo de la flota
  */
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         await vehicleService.delete(id);

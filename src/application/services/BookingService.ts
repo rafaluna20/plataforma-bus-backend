@@ -114,6 +114,7 @@ export class BookingService {
                 seatId: data.seatId,
                 totalPrice: calculatedPrice,
                 paymentStatus: PaymentStatus.PENDING_CASH,
+                user: data.userId ? ({ id: data.userId } as any) : null,
             });
 
             await bookingRepo.save(newBooking);
@@ -168,6 +169,7 @@ export class BookingService {
                 totalPrice: calculatedPrice,
                 paymentStatus: PaymentStatus.PENDING_DIGITAL,
                 paymentMethod: paymentDetails.method as string,
+                user: data.userId ? ({ id: data.userId } as any) : null,
             });
             await bookingRepo.save(newBooking);
 

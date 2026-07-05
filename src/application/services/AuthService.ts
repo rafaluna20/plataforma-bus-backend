@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
 import { AppDataSource } from '../../infrastructure/database/data-source';
 import { UserEntity, UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { CompanyEntity } from '../../infrastructure/database/entities/CompanyEntity';
@@ -10,6 +11,12 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'CHANGE_THIS_REFRESH_SECRET_IN_PRODUCTION';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const SALT_ROUNDS = 12;
+
+// El refresh token es un JWT largo y ya de por sí de alta entropía: no necesita
+// un hash lento con sal (bcrypt además trunca en 72 bytes, lo que rompería la
+// comparación). Un digest sha256 basta para que una fuga de BD no entregue
+// sesiones válidas directamente.
+const hashRefreshToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
 export interface RegisterDTO {
     name: string;
@@ -159,7 +166,7 @@ export class AuthService {
 
         if (lastError) throw lastError;
 
-        if (!user || user.refreshToken !== refreshToken) {
+        if (!user || user.refreshToken !== hashRefreshToken(refreshToken)) {
             throw new Error('Refresh token revocado o inválido');
         }
 
@@ -222,8 +229,8 @@ export class AuthService {
         const accessToken = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
         const refreshToken = jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: JWT_REFRESH_EXPIRES_IN } as jwt.SignOptions);
 
-        // Guardar refresh token hasheado en BD
-        await this.userRepo.update(user.id, { refreshToken });
+        // Guardar refresh token hasheado en BD (nunca el token crudo)
+        await this.userRepo.update(user.id, { refreshToken: hashRefreshToken(refreshToken) });
 
         return {
             accessToken,

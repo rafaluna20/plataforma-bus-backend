@@ -1,9 +1,50 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { RouteService } from '../../application/services/RouteService';
 import { AuditLogService } from '../../application/services/AuditLogService';
+import { authorizeCompany, authorizeOwnCompanyResource } from '../middlewares/auth.middleware';
+import { UserRole } from '../../infrastructure/database/entities/UserEntity';
+import { AppDataSource } from '../../infrastructure/database/data-source';
+import { StationEntity } from '../../infrastructure/database/entities/StationEntity';
 
 const router = Router();
 const routeService = new RouteService();
+
+const resolveRouteCompanyId = async (req: Request) => {
+    const route = await routeService.findById(req.params.id as string);
+    return (route as any).company?.id ?? null;
+};
+
+/**
+ * Las estaciones son un recurso especial: pueden no tener empresa dueña
+ * (terminales públicos). En ese caso solo SUPER_ADMIN puede crear/editar/borrar;
+ * si tienen empresa, solo esa empresa (o SUPER_ADMIN) puede hacerlo.
+ */
+const authorizeStationOwnership = (resolveStationCompanyId: (req: Request) => Promise<string | null | undefined>) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        if (!req.user) {
+            res.status(401).json({ error: 'No autenticado.' });
+            return;
+        }
+        if (req.user.role === UserRole.SUPER_ADMIN) {
+            next();
+            return;
+        }
+        try {
+            const stationCompanyId = await resolveStationCompanyId(req);
+            if (stationCompanyId == null || stationCompanyId !== req.user.companyId) {
+                res.status(403).json({ error: 'No tienes permisos para administrar este paradero.' });
+                return;
+            }
+            next();
+        } catch (err: any) {
+            if (err.message?.includes('no encontrad')) {
+                res.status(404).json({ error: err.message });
+                return;
+            }
+            next(err);
+        }
+    };
+};
 
 // ==================== ESTACIONES / PARADEROS ====================
 
@@ -11,12 +52,17 @@ const routeService = new RouteService();
  * POST /api/v1/routes/stations
  * Crear un paradero o agencia con coordenadas geográficas
  */
-router.post('/stations', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/stations', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, name, address, city, latitude, longitude } = req.body;
 
         if (!name || !city || latitude === undefined || longitude === undefined) {
             return res.status(400).json({ error: 'Campos requeridos: name, city, latitude, longitude' });
+        }
+
+        // Solo SUPER_ADMIN puede crear terminales públicos (sin empresa dueña)
+        if (!companyId && req.user!.role !== UserRole.SUPER_ADMIN) {
+            return res.status(403).json({ error: 'Solo un SUPER_ADMIN puede crear un terminal público (sin empresa).' });
         }
 
         const station = await routeService.createStation({ companyId, name, address, city, latitude, longitude });
@@ -50,7 +96,16 @@ router.get('/stations', async (req: Request, res: Response, next: NextFunction) 
  * PUT /api/v1/routes/stations/:id
  * Actualizar nombre, ciudad, dirección y coordenadas de una estación
  */
-router.put('/stations/:id', async (req: Request, res: Response, next: NextFunction) => {
+const resolveStationCompanyId = async (req: Request) => {
+    const station = await AppDataSource.getRepository(StationEntity).findOne({
+        where: { id: req.params.id as string },
+        relations: { company: true },
+    });
+    if (!station) throw new Error('Estación no encontrada');
+    return station.company?.id ?? null;
+};
+
+router.put('/stations/:id', authorizeStationOwnership(resolveStationCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const { name, city, address, latitude, longitude } = req.body;
@@ -71,7 +126,7 @@ router.put('/stations/:id', async (req: Request, res: Response, next: NextFuncti
  * DELETE /api/v1/routes/stations/:id
  * Desactivar (soft-delete) una estación
  */
-router.delete('/stations/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/stations/:id', authorizeStationOwnership(resolveStationCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         await routeService.deleteStation(id);
@@ -90,7 +145,7 @@ router.delete('/stations/:id', async (req: Request, res: Response, next: NextFun
  * Crear una ruta completa con sus paradas intermedias (waypoints)
  * Body: { companyId, name, serviceMode, polyline?, waypoints: [{ stationId, stopOrder, estimatedDurationMins, basePrice }] }
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, name, serviceMode, polyline, waypoints } = req.body;
 
@@ -127,7 +182,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
  * GET /api/v1/routes/company/:companyId
  * Listar todas las rutas de una empresa con sus waypoints
  */
-router.get('/company/:companyId', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/company/:companyId', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = req.params.companyId as string;
         const routes = await routeService.findByCompany(companyId);
@@ -141,7 +196,7 @@ router.get('/company/:companyId', async (req: Request, res: Response, next: Next
  * GET /api/v1/routes/:id
  * Obtener detalle de una ruta con todos sus waypoints
  */
-router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const route = await routeService.findById(id);
@@ -156,7 +211,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * PUT /api/v1/routes/:id
  * Actualizar una ruta y sus waypoints
  */
-router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const route = await routeService.updateRoute(id, req.body);
@@ -186,7 +241,7 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * DELETE /api/v1/routes/:id
  * Eliminar una ruta
  */
-router.delete('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         await routeService.deleteRoute(id);

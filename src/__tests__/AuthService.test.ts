@@ -15,6 +15,7 @@ const mockUserRepo = {
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+    update: jest.fn(),
 };
 
 const mockCompanyRepo = {
@@ -89,7 +90,8 @@ describe('AuthService', () => {
             expect(result).toHaveProperty('user');
             expect(result.user.email).toBe('juan@test.com');
             expect(result.user.role).toBe(UserRole.PASSENGER);
-            expect(mockUserRepo.save).toHaveBeenCalledTimes(2); // create + save refresh token
+            expect(mockUserRepo.save).toHaveBeenCalledTimes(1); // crear el usuario
+            expect(mockUserRepo.update).toHaveBeenCalledTimes(1); // guardar el refresh token (hasheado)
         });
 
         it('debe lanzar error si el email ya está registrado', async () => {

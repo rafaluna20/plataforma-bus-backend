@@ -107,3 +107,51 @@ export const authorizeCompany = (req: Request, res: Response, next: NextFunction
 
     next();
 };
+
+/**
+ * Middleware factory que verifica que un recurso YA EXISTENTE (identificado por
+ * :id u otro parámetro) pertenece a la empresa del usuario autenticado, sin
+ * depender de que el companyId venga en el body/params de la petición (que el
+ * cliente podría omitir o falsificar). `resolveCompanyId` debe consultar el
+ * recurso y devolver el companyId dueño (o null si no aplica restricción,
+ * ej. un recurso sin empresa asociada). Si el recurso no existe, el error debe
+ * incluir "no encontrad" para que se traduzca en un 404 en vez de un 500.
+ */
+export const authorizeOwnCompanyResource = (
+    resolveCompanyId: (req: Request) => Promise<string | null | undefined>
+) => {
+    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+        if (!req.user) {
+            res.status(401).json({ error: 'No autenticado.' });
+            return;
+        }
+
+        if (req.user.role === UserRole.SUPER_ADMIN) {
+            next();
+            return;
+        }
+
+        try {
+            const ownerCompanyId = await resolveCompanyId(req);
+
+            if (ownerCompanyId == null) {
+                next();
+                return;
+            }
+
+            if (req.user.companyId !== ownerCompanyId) {
+                logger.warn(`Acceso denegado: usuario ${req.user.email} intentó acceder a un recurso de otra empresa`);
+                res.status(403).json({ error: 'No tienes permisos para acceder a los recursos de esta empresa.' });
+                return;
+            }
+
+            next();
+        } catch (err: any) {
+            if (err.message?.includes('no encontrad')) {
+                res.status(404).json({ error: err.message });
+                return;
+            }
+            next(err);
+        }
+    };
+};

@@ -1,5 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { TripManagementService } from '../../application/services/TripManagementService';
+import { authorize } from '../middlewares/auth.middleware';
+import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 
 const router = Router();
 const tripMgmtService = new TripManagementService();
@@ -7,8 +9,9 @@ const tripMgmtService = new TripManagementService();
 /**
  * POST /api/v1/management/trips
  * Programar una nueva salida/viaje
+ * Restringido a ADMIN/SUPER_ADMIN/DRIVER (AGENCY_SELLER solo autoriza abordaje, no crea viajes)
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { routeId, vehicleId, departureTime, driverId } = req.body;
 
@@ -34,8 +37,9 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 /**
  * PATCH /api/v1/management/trips/:id
  * Editar/Reprogramar un viaje (cambiar salida o vehículo)
+ * Restringido a ADMIN/SUPER_ADMIN/DRIVER (AGENCY_SELLER no reprograma viajes)
  */
-router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { departureTime, vehicleId, driverId } = req.body;
         const tripId = req.params.id as string;
@@ -63,6 +67,9 @@ router.patch('/:id', async (req: Request, res: Response, next: NextFunction) => 
 /**
  * PATCH /api/v1/management/trips/:id/status
  * Actualizar el estado de un viaje (SCHEDULED → BOARDING → IN_TRANSIT → COMPLETED)
+ * Abierto a ADMIN/SUPER_ADMIN/DRIVER/AGENCY_SELLER: el vendedor puede autorizar el
+ * abordaje (SCHEDULED→BOARDING→IN_TRANSIT), pero solo conductor/admin puede marcar
+ * COMPLETED (confirmar llegada) — esa regla fina se valida en el service según el rol.
  */
 router.patch('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -70,10 +77,11 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
         if (!status) return res.status(400).json({ error: 'Campo requerido: status' });
 
         const tripId = req.params.id as string;
-        const trip = await tripMgmtService.updateStatus({ tripId, status });
+        const trip = await tripMgmtService.updateStatus({ tripId, status, actorRole: req.user?.role });
         return res.status(200).json({ message: `Estado actualizado a ${status}`, trip });
     } catch (error: any) {
         if (error.message?.includes('No se puede cambiar')) return res.status(400).json({ error: error.message });
+        if (error.message?.includes('no está autorizado')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
     }
@@ -82,8 +90,9 @@ router.patch('/:id/status', async (req: Request, res: Response, next: NextFuncti
 /**
  * GET /api/v1/management/trips/company/:companyId
  * Listar viajes de una empresa (opcionalmente filtrar por estado con ?status=SCHEDULED)
+ * Restringido a ADMIN/SUPER_ADMIN/DRIVER
  */
-router.get('/company/:companyId', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/company/:companyId', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status } = req.query;
         const companyId = req.params.companyId as string;

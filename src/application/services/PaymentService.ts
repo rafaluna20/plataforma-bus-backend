@@ -79,67 +79,86 @@ export class PaymentService {
         message: string;
         booking: BookingEntity;
     }> {
-        // 1. Obtener la reserva y validar que esté pendiente
-        const booking = await this.bookingRepo.findOne({
-            where: { id: data.bookingId },
-            relations: { user: true, trip: true },
-        });
-
-        if (!booking) throw new Error('Reserva no encontrada');
-        if (booking.user.id !== data.userId) throw new Error('No tienes permisos para pagar esta reserva');
-        if (booking.paymentStatus === PaymentStatus.PAID || booking.paymentStatus === PaymentStatus.PAID_DIGITAL) {
-            throw new Error('Esta reserva ya fue pagada');
-        }
-
-        // 2. Calcular monto en centavos (Culqi trabaja en centavos)
-        const amountInCents = Math.round(booking.price * 100);
-
-        // 3. Crear cargo en Culqi
-        const chargePayload: CulqiChargeRequest = {
-            amount: amountInCents,
-            currency_code: 'PEN',
-            email: data.email,
-            source_id: data.culqiToken,
-            description: `Reserva de transporte - Asiento ${booking.seatId}`,
-            metadata: {
-                booking_id: booking.id,
-                trip_id: booking.trip.id,
-                passenger: booking.passengerName,
-            },
-        };
-
-        let chargeResponse: CulqiChargeResponse;
+        // Bloqueo pesimista sobre la reserva (igual que processWalletPayment): sin
+        // esto, dos peticiones concurrentes para la misma reserva pasan ambas la
+        // validación "¿ya está pagada?" antes de que cualquiera confirme el cargo,
+        // y terminan cobrando dos veces. La segunda petición queda serializada
+        // hasta que la primera libera el lock, y en ese punto ya ve PAID.
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
         try {
-            chargeResponse = await this.createCulqiCharge(chargePayload);
-        } catch (error: any) {
-            logger.error(`[Payment] Error al procesar cargo Culqi: ${error.message}`, {
-                bookingId: data.bookingId,
-                amount: amountInCents,
+            // 1. Obtener la reserva con bloqueo y validar que esté pendiente
+            const booking = await queryRunner.manager.findOne(BookingEntity, {
+                where: { id: data.bookingId },
+                relations: { user: true, trip: true },
+                lock: { mode: 'pessimistic_write' },
             });
-            throw new Error(`Error al procesar el pago: ${error.message}`);
+
+            if (!booking) throw new Error('Reserva no encontrada');
+            if (booking.user.id !== data.userId) throw new Error('No tienes permisos para pagar esta reserva');
+            if (booking.paymentStatus === PaymentStatus.PAID || booking.paymentStatus === PaymentStatus.PAID_DIGITAL) {
+                throw new Error('Esta reserva ya fue pagada');
+            }
+
+            // 2. Calcular monto en centavos (Culqi trabaja en centavos)
+            const amountInCents = Math.round(booking.price * 100);
+
+            // 3. Crear cargo en Culqi
+            const chargePayload: CulqiChargeRequest = {
+                amount: amountInCents,
+                currency_code: 'PEN',
+                email: data.email,
+                source_id: data.culqiToken,
+                description: `Reserva de transporte - Asiento ${booking.seatId}`,
+                metadata: {
+                    booking_id: booking.id,
+                    trip_id: booking.trip.id,
+                    passenger: booking.passengerName,
+                },
+            };
+
+            let chargeResponse: CulqiChargeResponse;
+
+            try {
+                chargeResponse = await this.createCulqiCharge(chargePayload);
+            } catch (error: any) {
+                logger.error(`[Payment] Error al procesar cargo Culqi: ${error.message}`, {
+                    bookingId: data.bookingId,
+                    amount: amountInCents,
+                });
+                throw new Error(`Error al procesar el pago: ${error.message}`);
+            }
+
+            // 4. Verificar que el cargo fue exitoso
+            if (chargeResponse.outcome?.type !== 'venta_exitosa') {
+                const userMessage = chargeResponse.outcome?.user_message || 'Pago rechazado';
+                logger.warn(`[Payment] Cargo rechazado: ${userMessage}`, { bookingId: data.bookingId });
+                throw new Error(`Pago rechazado: ${userMessage}`);
+            }
+
+            // 5. Actualizar estado de la reserva
+            booking.paymentStatus = PaymentStatus.PAID;
+            booking.culqiChargeId = chargeResponse.id;
+            const savedBooking = await queryRunner.manager.save(booking);
+
+            await queryRunner.commitTransaction();
+
+            logger.info(`[Payment] Pago exitoso: booking=${data.bookingId} | charge=${chargeResponse.id} | amount=S/.${booking.price}`);
+
+            return {
+                success: true,
+                chargeId: chargeResponse.id,
+                message: `Pago de S/. ${booking.price.toFixed(2)} procesado exitosamente`,
+                booking: savedBooking,
+            };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
         }
-
-        // 4. Verificar que el cargo fue exitoso
-        if (chargeResponse.outcome?.type !== 'venta_exitosa') {
-            const userMessage = chargeResponse.outcome?.user_message || 'Pago rechazado';
-            logger.warn(`[Payment] Cargo rechazado: ${userMessage}`, { bookingId: data.bookingId });
-            throw new Error(`Pago rechazado: ${userMessage}`);
-        }
-
-        // 5. Actualizar estado de la reserva
-        booking.paymentStatus = PaymentStatus.PAID;
-        booking.culqiChargeId = chargeResponse.id;
-        const savedBooking = await this.bookingRepo.save(booking);
-
-        logger.info(`[Payment] Pago exitoso: booking=${data.bookingId} | charge=${chargeResponse.id} | amount=S/.${booking.price}`);
-
-        return {
-            success: true,
-            chargeId: chargeResponse.id,
-            message: `Pago de S/. ${booking.price.toFixed(2)} procesado exitosamente`,
-            booking: savedBooking,
-        };
     }
 
     /**

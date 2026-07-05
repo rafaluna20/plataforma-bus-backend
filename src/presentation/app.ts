@@ -154,10 +154,12 @@ class App {
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             routeRoutes
         );
+        // AGENCY_SELLER incluido para poder autorizar el abordaje (PATCH /:id/status);
+        // las demás rutas (crear/reprogramar/listar) restringen el rol internamente.
         this.express.use(
             '/api/v1/management/trips',
             authenticate,
-            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER),
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER),
             tripMgmtRoutes
         );
 
@@ -169,11 +171,11 @@ class App {
             adminRoutes
         );
 
-        // ENCOMIENDAS: Gestión de paquetes/encomiendas por viaje (ADMIN, SUPER_ADMIN)
+        // ENCOMIENDAS: Gestión de paquetes/encomiendas por viaje (ADMIN, SUPER_ADMIN, AGENCY_SELLER)
         this.express.use(
             '/api/v1/parcels',
             authenticate,
-            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER),
             parcelRoutes
         );
 

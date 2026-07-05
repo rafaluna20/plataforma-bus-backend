@@ -2,6 +2,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { SearchTripsService, SearchTripsResult } from '../../application/services/SearchTripsService';
 import { AppDataSource } from '../../infrastructure/database/data-source';
 import { BookingEntity, PaymentStatus } from '../../infrastructure/database/entities/BookingEntity';
+import { TripEntity } from '../../infrastructure/database/entities/TripEntity';
+import { UserRole } from '../../infrastructure/database/entities/UserEntity';
+import { authenticate, authorize } from '../middlewares/auth.middleware';
 
 const router = Router();
 const searchTripsService = new SearchTripsService();
@@ -106,11 +109,30 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
 /**
  * GET /api/v1/trips/:tripId/manifest
  * Retorna la lista de pasajeros (manifiesto) para el chofer.
- * Endpoint público para el MVP — en producción proteger con authenticate + authorize(DRIVER, ADMIN)
+ * Contiene PII (DNI/pasaporte) — restringido a DRIVER/AGENCY_SELLER/ADMIN de la
+ * empresa dueña del viaje, o SUPER_ADMIN.
  */
-router.get('/:tripId/manifest', async (req: Request, res: Response, next: NextFunction) => {
+router.get(
+    '/:tripId/manifest',
+    authenticate,
+    authorize(UserRole.DRIVER, UserRole.AGENCY_SELLER, UserRole.ADMIN, UserRole.SUPER_ADMIN),
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { tripId } = req.params as { tripId: string };
+
+        if (req.user!.role !== UserRole.SUPER_ADMIN) {
+            const tripRepo = AppDataSource.getRepository(TripEntity);
+            const trip = await tripRepo.findOne({
+                where: { id: tripId },
+                relations: { route: { company: true } },
+            });
+            if (!trip) return res.status(404).json({ error: 'Viaje no encontrado' });
+
+            if (trip.route?.company?.id !== req.user!.companyId) {
+                return res.status(403).json({ error: 'No tienes permisos para ver el manifiesto de este viaje.' });
+            }
+        }
+
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
 
         // Incluir todos los estados activos (CORRECCIÓN del bug original)
@@ -126,6 +148,7 @@ router.get('/:tripId/manifest', async (req: Request, res: Response, next: NextFu
             .leftJoinAndSelect('sw.station', 'ss')
             .leftJoinAndSelect('b.endWaypoint', 'ew')
             .leftJoinAndSelect('ew.station', 'es')
+            .leftJoinAndSelect('b.user', 'u')
             .where('b.trip_id = :tripId', { tripId })
             .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
             .orderBy('b.seatId', 'ASC')
@@ -143,6 +166,14 @@ router.get('/:tripId/manifest', async (req: Request, res: Response, next: NextFu
                 destination: (b.endWaypoint as any)?.station?.name || 'Destino',
                 paymentStatus: b.paymentStatus,
                 paymentMethod: b.paymentMethod || 'CASH',
+                price: Number(b.totalPrice),
+                createdAt: b.createdAt,
+                seller: b.user ? {
+                    id:    b.user.id,
+                    name:  b.user.name,
+                    email: b.user.email,
+                    role:  b.user.role,
+                } : null,
             })),
         });
     } catch (error) {
