@@ -4,7 +4,7 @@ import { RouteWaypointEntity } from '../../infrastructure/database/entities/Rout
 import { StationEntity } from '../../infrastructure/database/entities/StationEntity';
 import { CompanyEntity } from '../../infrastructure/database/entities/CompanyEntity';
 import { ServiceMode } from '../../infrastructure/database/entities/VehicleEntity';
-import { BookingEntity } from '../../infrastructure/database/entities/BookingEntity';
+import { BookingEntity } from '../../modules/bookings/domain/BookingEntity';
 
 export interface CreateStationDTO {
     companyId?: string;

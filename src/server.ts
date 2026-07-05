@@ -4,12 +4,18 @@ import { Server as SocketIOServer } from 'socket.io';
 import app from './presentation/app';
 import { AppDataSource } from './infrastructure/database/data-source';
 import { LocationGateway } from './infrastructure/sockets/LocationGateway';
+import { setSocketServer } from './infrastructure/sockets/SocketBus';
 import { logger } from './infrastructure/logger';
+import { initSentry, captureError } from './infrastructure/monitoring/sentry';
 
 const PORT = process.env.PORT || 3001;
 
 const startServer = async () => {
     try {
+        // 0. Inicializar Sentry lo antes posible para capturar cualquier error
+        // durante el propio arranque (conexión a BD, sockets, etc.)
+        await initSentry();
+
         // 1. Inicializar la conexión a la Base de Datos con TypeORM
         await AppDataSource.initialize();
         logger.info('✅ Base de Datos (PostgreSQL) inicializada correctamente');
@@ -35,6 +41,10 @@ const startServer = async () => {
         // Configurar Gateway de Ubicaciones GPS (con autenticación)
         new LocationGateway(io);
 
+        // Exponer la instancia de Socket.io a la capa de aplicación (p.ej. avisos de
+        // cambio de estado de viaje) sin acoplarla a los detalles de LocationGateway.
+        setSocketServer(io);
+
         // 4. Levantar el servidor
         server.listen(PORT, () => {
             logger.info(`🚀 Servidor corriendo en el puerto ${PORT}`);
@@ -59,6 +69,7 @@ const startServer = async () => {
 
     } catch (error) {
         logger.error('❌ Error fatal al iniciar el servidor:', { error });
+        captureError(error instanceof Error ? error : new Error(String(error)), { phase: 'startup' });
         process.exit(1);
     }
 };

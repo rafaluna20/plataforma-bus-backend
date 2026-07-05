@@ -37,10 +37,17 @@ export const AppDataSource = new DataSource({
     password: process.env.DB_PASSWORD || 'dev_password_only',
     database: process.env.DB_NAME || 'transporte_db',
     // ⚠️ NUNCA usar synchronize:true en producción — puede destruir el esquema
-    // Usar migraciones: npm run typeorm migration:run
+    // Usar migraciones: npm run migration:generate / migration:run
     synchronize: process.env.NODE_ENV !== 'production',
+    // Aplica automáticamente cualquier migración pendiente al arrancar el
+    // servidor (AppDataSource.initialize()), antes de aceptar requests — así
+    // no depende de que alguien recuerde correr `migration:run` a mano antes
+    // de cada deploy con cambios de esquema.
+    migrationsRun: true,
     logging: process.env.NODE_ENV === 'development' ? ['error'] : ['error'],
-    entities: [__dirname + '/entities/*.{js,ts}'],
+    // El segundo patrón recoge entities de módulos ya extraídos a src/modules/*/domain/
+    // (ver src/modules/parcels como piloto de monolito modular).
+    entities: [__dirname + '/entities/*.{js,ts}', __dirname + '/../../modules/*/domain/*.{js,ts}'],
     migrations: [__dirname + '/migrations/*.{js,ts}'],
     subscribers: [],
     /**

@@ -6,10 +6,10 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../logger';
 import { TokenPayload } from '../../application/services/AuthService';
 import { UserRole } from '../database/entities/UserEntity';
-import { TripManagementService } from '../../application/services/TripManagementService';
+import { TripManagementService } from '../../modules/trips';
 import { AppDataSource } from '../database/data-source';
-import { BookingEntity, PaymentStatus } from '../database/entities/BookingEntity';
-import { TripEntity } from '../database/entities/TripEntity';
+import { BookingEntity, PaymentStatus } from '../../modules/bookings/domain/BookingEntity';
+import { TripEntity } from '../../modules/trips/domain/TripEntity';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
