@@ -3,6 +3,7 @@ import { CompanyService } from '../../application/services/CompanyService';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { authorize } from '../middlewares/auth.middleware';
 import { AuditLogService } from '../../application/services/AuditLogService';
+import { validateBody, CreateCompanySchema, UpdateCompanySchema } from '../validators/schemas';
 
 const router = Router();
 const companyService = new CompanyService();
@@ -33,13 +34,9 @@ const authorizeSelfCompany = (req: Request, res: Response, next: NextFunction): 
  * Registrar una nueva empresa operadora en el marketplace.
  * Solo SUPER_ADMIN puede dar de alta nuevos tenants del marketplace.
  */
-router.post('/', authorize(UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorize(UserRole.SUPER_ADMIN), validateBody(CreateCompanySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { ruc, tradeName, legalName, commissionRate } = req.body;
-
-        if (!ruc || !tradeName || !legalName) {
-            return res.status(400).json({ error: 'Campos requeridos: ruc, tradeName, legalName' });
-        }
 
         const company = await companyService.create({ ruc, tradeName, legalName, commissionRate });
 
@@ -96,7 +93,7 @@ router.get('/:id', authorizeSelfCompany, async (req: Request, res: Response, nex
  * PUT /api/v1/companies/:id
  * Actualizar datos de empresa
  */
-router.put('/:id', authorizeSelfCompany, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authorizeSelfCompany, validateBody(UpdateCompanySchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const updates = { ...req.body };
 

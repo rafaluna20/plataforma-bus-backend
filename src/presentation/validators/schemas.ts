@@ -158,6 +158,49 @@ export const CreateCompanySchema = z.object({
         .default(0),
 });
 
+export const UpdateCompanySchema = z.object({
+    tradeName: z
+        .string()
+        .min(2, 'El nombre comercial debe tener al menos 2 caracteres')
+        .max(150, 'El nombre comercial no puede superar 150 caracteres')
+        .trim()
+        .optional(),
+    legalName: z
+        .string()
+        .min(2, 'La razón social debe tener al menos 2 caracteres')
+        .max(150, 'La razón social no puede superar 150 caracteres')
+        .trim()
+        .optional(),
+    commissionRate: z
+        .number()
+        .min(0, 'La comisión no puede ser negativa')
+        .max(100, 'La comisión no puede superar el 100%')
+        .optional(),
+    isActive: z.boolean().optional(),
+});
+
+// ─── Company Branding Schemas ─────────────────────────────────────────────────
+
+export const UpdateBrandingSchema = z.object({
+    slug: z
+        .string()
+        .min(2, 'El slug debe tener al menos 2 caracteres')
+        .max(60, 'El slug no puede superar 60 caracteres')
+        .regex(/^[a-z0-9-]+$/, 'El slug solo puede contener letras minúsculas, números y guiones (-)')
+        .optional(),
+    logoUrl: z.string().url('logoUrl debe ser una URL válida').optional(),
+    primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'El color primario debe ser un código hex válido (ej: #6366f1)').optional(),
+    secondaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'El color secundario debe ser un código hex válido (ej: #8b5cf6)').optional(),
+    bannerUrl: z.string().url('bannerUrl debe ser una URL válida').optional(),
+    phone: z.string().regex(/^[0-9+\-\s()]{7,20}$/, 'Formato de teléfono inválido').optional(),
+    address: z.string().max(200).optional(),
+    city: z.string().max(50).optional(),
+    website: z.string().url('website debe ser una URL válida').optional(),
+    description: z.string().max(1000).optional(),
+    contactEmail: z.string().email('Formato de correo inválido').optional(),
+    sliderImages: z.array(z.string().url('Cada imagen del slider debe ser una URL válida')).optional(),
+});
+
 // ─── Vehicle Schemas ──────────────────────────────────────────────────────────
 
 export const CreateVehicleSchema = z.object({

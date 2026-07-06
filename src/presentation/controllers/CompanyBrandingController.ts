@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { CompanyBrandingService } from '../../application/services/CompanyBrandingService';
 import { authenticate, authorize } from '../middlewares/auth.middleware';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
+import { validateBody, UpdateBrandingSchema } from '../validators/schemas';
 
 const router = Router();
 const brandingService = new CompanyBrandingService();
@@ -69,7 +70,7 @@ router.get('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
  * PATCH /api/v1/branding/me
  * Actualizar branding de la empresa del admin logueado
  */
-router.patch('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN), validateBody(UpdateBrandingSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const user = (req as any).user;
         const companyId = user?.companyId;
@@ -94,7 +95,7 @@ router.patch('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN
  * PATCH /api/v1/branding/:companyId  (solo SUPER_ADMIN)
  * Actualizar branding de cualquier empresa
  */
-router.patch('/:companyId', authenticate, authorize(UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:companyId', authenticate, authorize(UserRole.SUPER_ADMIN), validateBody(UpdateBrandingSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const companyId = Array.isArray(req.params.companyId) ? req.params.companyId[0] : req.params.companyId;
         const { slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
