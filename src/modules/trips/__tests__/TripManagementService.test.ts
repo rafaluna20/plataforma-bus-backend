@@ -24,6 +24,7 @@ const mockTripRepo = {
     findOne: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+    count: jest.fn(),
     createQueryBuilder: jest.fn(() => mockTripQB),
 };
 
@@ -265,6 +266,106 @@ describe('TripManagementService', () => {
 
             expect(mockEmitToTrip).toHaveBeenCalledTimes(1);
             expect(mockEmitToTrip).toHaveBeenCalledWith('t1', 'trip_status_changed', expect.anything());
+        });
+
+        // ─── SEGURIDAD: un DRIVER solo puede tocar SUS viajes asignados ───────
+        describe('ownership de DRIVER', () => {
+            it('permite al DRIVER asignado cambiar el estado de su propio viaje', async () => {
+                mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
+                mockTripRepo.count.mockResolvedValue(1); // isDriverAssignedToTrip -> true
+                mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
+
+                const result = await service.updateStatus({
+                    tripId: 't1', status: TripStatus.BOARDING,
+                    actorRole: UserRole.DRIVER, actorCompanyId: 'company-001', actorId: 'driver-001',
+                });
+
+                expect(result.status).toBe(TripStatus.BOARDING);
+                expect(mockTripRepo.count).toHaveBeenCalledWith({ where: { id: 't1', driver: { id: 'driver-001' } } });
+            });
+
+            it('rechaza a un DRIVER que intenta cambiar el estado de un viaje que NO tiene asignado', async () => {
+                mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
+                mockTripRepo.count.mockResolvedValue(0); // isDriverAssignedToTrip -> false
+
+                await expect(service.updateStatus({
+                    tripId: 't1', status: TripStatus.BOARDING,
+                    actorRole: UserRole.DRIVER, actorCompanyId: 'company-001', actorId: 'otro-conductor',
+                })).rejects.toThrow('no está asignado a ti');
+
+                expect(mockTripRepo.save).not.toHaveBeenCalled();
+            });
+
+            it('rechaza a un DRIVER sin actorId (no se puede verificar asignación)', async () => {
+                mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
+
+                await expect(service.updateStatus({
+                    tripId: 't1', status: TripStatus.BOARDING,
+                    actorRole: UserRole.DRIVER, actorCompanyId: 'company-001',
+                })).rejects.toThrow('no está asignado a ti');
+
+                expect(mockTripRepo.count).not.toHaveBeenCalled();
+            });
+
+            it('un ADMIN de la misma empresa no necesita estar "asignado" para cambiar el estado', async () => {
+                mockTripRepo.findOne.mockResolvedValue({ id: 't1', status: TripStatus.SCHEDULED, route: mockRoute });
+                mockTripRepo.save.mockResolvedValue({ id: 't1', status: TripStatus.BOARDING });
+
+                const result = await service.updateStatus({
+                    tripId: 't1', status: TripStatus.BOARDING,
+                    actorRole: UserRole.ADMIN, actorCompanyId: 'company-001',
+                });
+
+                expect(result.status).toBe(TripStatus.BOARDING);
+                expect(mockTripRepo.count).not.toHaveBeenCalled();
+            });
+        });
+    });
+
+    // ─── update (reprogramar) ─────────────────────────────────────────────────
+
+    describe('update() — ownership de DRIVER', () => {
+        it('permite al DRIVER asignado reprogramar su propio viaje', async () => {
+            mockTripRepo.findOne.mockResolvedValue({
+                id: 't1', status: TripStatus.SCHEDULED, route: mockRoute, vehicle: mockVehicle,
+                driver: { id: 'driver-001' },
+            });
+            mockTripQB.getOne.mockResolvedValue(null); // sin conflicto de horario para el vehículo
+            const newDepartureTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            mockTripRepo.save.mockImplementation((t) => Promise.resolve(t));
+
+            const result = await service.update('t1', {
+                departureTime: newDepartureTime,
+                actorRole: UserRole.DRIVER, actorCompanyId: 'company-001', actorId: 'driver-001',
+            });
+
+            expect(result).toBeTruthy();
+        });
+
+        it('rechaza a un DRIVER que intenta reprogramar el viaje de un colega', async () => {
+            mockTripRepo.findOne.mockResolvedValue({
+                id: 't1', status: TripStatus.SCHEDULED, route: mockRoute, vehicle: mockVehicle,
+                driver: { id: 'otro-conductor' },
+            });
+
+            await expect(service.update('t1', {
+                departureTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                actorRole: UserRole.DRIVER, actorCompanyId: 'company-001', actorId: 'driver-001',
+            })).rejects.toThrow('no está asignado a ti');
+
+            expect(mockTripRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('rechaza a un DRIVER que intenta reprogramar un viaje sin conductor asignado', async () => {
+            mockTripRepo.findOne.mockResolvedValue({
+                id: 't1', status: TripStatus.SCHEDULED, route: mockRoute, vehicle: mockVehicle,
+                driver: null,
+            });
+
+            await expect(service.update('t1', {
+                departureTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                actorRole: UserRole.DRIVER, actorCompanyId: 'company-001', actorId: 'driver-001',
+            })).rejects.toThrow('no está asignado a ti');
         });
     });
 

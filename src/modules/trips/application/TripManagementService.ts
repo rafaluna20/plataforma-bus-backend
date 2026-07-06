@@ -22,6 +22,7 @@ export interface UpdateTripStatusDTO {
     status: TripStatus;
     actorRole?: UserRole; // Rol del usuario que ejecuta la transición (valida permisos finos por estado destino)
     actorCompanyId?: string;
+    actorId?: string; // Requerido para que un DRIVER solo pueda tocar SUS viajes asignados
 }
 
 // Roles autorizados a establecer cada estado destino. AGENCY_SELLER puede autorizar
@@ -179,7 +180,7 @@ export class TripManagementService {
      */
     public async update(
         tripId: string,
-        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null; actorRole?: UserRole; actorCompanyId?: string },
+        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null; actorRole?: UserRole; actorCompanyId?: string; actorId?: string },
     ): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({
             where: { id: tripId },
@@ -188,6 +189,12 @@ export class TripManagementService {
         if (!trip) throw new Error('Viaje no encontrado');
 
         assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
+
+        // SEGURIDAD: un DRIVER solo puede reprogramar un viaje que tiene
+        // asignado — no el de un colega.
+        if (data.actorRole === UserRole.DRIVER && trip.driver?.id !== data.actorId) {
+            throw new Error('No estás autorizado: este viaje no está asignado a ti');
+        }
 
         // Solo permitir editar viajes PROGRAMADOS
         if (trip.status !== TripStatus.SCHEDULED) {
@@ -270,6 +277,14 @@ export class TripManagementService {
         if (!trip) throw new Error('Viaje no encontrado');
 
         assertSameCompany(data.actorRole, data.actorCompanyId, trip.route.company.id);
+
+        // SEGURIDAD: un DRIVER solo puede cambiar el estado de un viaje que
+        // tiene asignado — de lo contrario cualquier conductor de la empresa
+        // podría cancelar o completar el viaje de un colega.
+        if (data.actorRole === UserRole.DRIVER) {
+            const assigned = data.actorId && await this.isDriverAssignedToTrip(data.actorId, data.tripId);
+            if (!assigned) throw new Error('No estás autorizado: este viaje no está asignado a ti');
+        }
 
         // Validar transiciones de estado válidas
         const validTransitions: Record<TripStatus, TripStatus[]> = {

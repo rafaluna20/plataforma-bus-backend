@@ -4,6 +4,7 @@ import { AdminService } from '../../application/services/AdminService';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { validateBody, validateQuery } from '../validators/schemas';
 import { AuditLogService } from '../../application/services/AuditLogService';
+import { authorize } from '../middlewares/auth.middleware';
 
 
 const router = Router();
@@ -42,7 +43,7 @@ const ListUsersQuerySchema = z.object({
  * Crear un usuario con rol ADMIN vinculado a una empresa.
  * Solo SUPER_ADMIN puede ejecutar este endpoint.
  */
-router.post('/users/admin', validateBody(CreateStaffSchema), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/users/admin', authorize(UserRole.SUPER_ADMIN), validateBody(CreateStaffSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const user = await adminService.createAdmin(req.body);
 
@@ -152,6 +153,8 @@ router.patch('/users/:id/role', validateBody(UpdateRoleSchema), async (req: Requ
             userId,
             role: req.body.role,
             companyId: req.body.companyId,
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
         });
 
         await AuditLogService.log({
@@ -171,7 +174,9 @@ router.patch('/users/:id/role', validateBody(UpdateRoleSchema), async (req: Requ
         });
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
-        if (error.message?.includes('SUPER_ADMIN')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('SUPER_ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         next(error);
     }
 });
@@ -189,7 +194,7 @@ router.patch('/users/:id/status', async (req: Request, res: Response, next: Next
         }
 
         const userId = req.params.id as string;
-        const result = await adminService.toggleUserStatus(userId, isActive);
+        const result = await adminService.toggleUserStatus(userId, isActive, req.user?.role, req.user?.companyId);
 
         await AuditLogService.log({
             userId: req.user?.sub,
@@ -205,7 +210,9 @@ router.patch('/users/:id/status', async (req: Request, res: Response, next: Next
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
-        if (error.message?.includes('SUPER_ADMIN')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         next(error);
     }
 });
@@ -218,7 +225,7 @@ router.patch('/users/:id/status', async (req: Request, res: Response, next: Next
 router.patch('/users/:id/activate', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.params.id as string;
-        const result = await adminService.toggleUserStatus(userId, true);
+        const result = await adminService.toggleUserStatus(userId, true, req.user?.role, req.user?.companyId);
 
         await AuditLogService.log({
             userId: req.user?.sub,
@@ -234,7 +241,9 @@ router.patch('/users/:id/activate', async (req: Request, res: Response, next: Ne
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
-        if (error.message?.includes('SUPER_ADMIN')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         next(error);
     }
 });
@@ -247,7 +256,7 @@ router.patch('/users/:id/activate', async (req: Request, res: Response, next: Ne
 router.patch('/users/:id/deactivate', async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.params.id as string;
-        const result = await adminService.toggleUserStatus(userId, false);
+        const result = await adminService.toggleUserStatus(userId, false, req.user?.role, req.user?.companyId);
 
         await AuditLogService.log({
             userId: req.user?.sub,
@@ -263,7 +272,9 @@ router.patch('/users/:id/deactivate', async (req: Request, res: Response, next: 
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
-        if (error.message?.includes('SUPER_ADMIN')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         next(error);
     }
 });
@@ -281,7 +292,7 @@ router.patch('/users/:id/toggle', async (req: Request, res: Response, next: Next
         if (typeof isActive !== 'boolean') {
             return res.status(400).json({ error: 'Campo requerido: isActive (boolean)' });
         }
-        const result = await adminService.toggleUserStatus(userId, isActive);
+        const result = await adminService.toggleUserStatus(userId, isActive, req.user?.role, req.user?.companyId);
 
         await AuditLogService.log({
             userId: req.user?.sub,
@@ -297,6 +308,9 @@ router.patch('/users/:id/toggle', async (req: Request, res: Response, next: Next
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
         next(error);
     }
 });

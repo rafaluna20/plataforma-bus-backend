@@ -22,6 +22,8 @@ export interface UpdateUserRoleDTO {
     userId: string;
     role: UserRole;
     companyId?: string;
+    actorRole?: UserRole;
+    actorCompanyId?: string;
 }
 
 export interface PaginatedUsers {
@@ -172,6 +174,10 @@ export class AdminService {
     /**
      * Cambiar el rol de un usuario existente.
      * Permite promover PASSENGER → ADMIN/DRIVER o degradar roles.
+     *
+     * SEGURIDAD: solo SUPER_ADMIN puede asignar los roles ADMIN o SUPER_ADMIN
+     * (de lo contrario un ADMIN podría auto-promoverse a SUPER_ADMIN); un
+     * ADMIN solo puede gestionar usuarios de su propia empresa.
      */
     public async updateUserRole(data: UpdateUserRoleDTO): Promise<Omit<UserEntity, 'passwordHash' | 'refreshToken'>> {
         const user = await this.userRepo.findOne({
@@ -184,6 +190,17 @@ export class AdminService {
         // No permitir cambiar el rol de otro SUPER_ADMIN
         if (user.role === UserRole.SUPER_ADMIN) {
             throw new Error('No se puede modificar el rol de un SUPER_ADMIN');
+        }
+
+        if (data.actorRole !== UserRole.SUPER_ADMIN) {
+            if (data.role === UserRole.ADMIN || data.role === UserRole.SUPER_ADMIN) {
+                throw new Error('Solo un SUPER_ADMIN puede asignar el rol ADMIN o SUPER_ADMIN');
+            }
+
+            const targetCompanyId = data.companyId ?? user.company?.id;
+            if (!data.actorCompanyId || targetCompanyId !== data.actorCompanyId) {
+                throw new Error('Solo puedes gestionar usuarios de tu propia empresa');
+            }
         }
 
         user.role = data.role;
@@ -204,13 +221,32 @@ export class AdminService {
 
     /**
      * Activar o desactivar una cuenta de usuario.
+     *
+     * SEGURIDAD: un ADMIN solo puede activar/desactivar staff (DRIVER,
+     * AGENCY_SELLER, PASSENGER) de SU PROPIA empresa — no a otro ADMIN, y no a
+     * usuarios de otra empresa. SUPER_ADMIN no tiene esa restricción (salvo
+     * nunca poder tocar a otro SUPER_ADMIN, ya validado abajo).
      */
-    public async toggleUserStatus(userId: string, isActive: boolean): Promise<{ message: string }> {
-        const user = await this.userRepo.findOne({ where: { id: userId } });
+    public async toggleUserStatus(
+        userId: string,
+        isActive: boolean,
+        actorRole?: UserRole,
+        actorCompanyId?: string,
+    ): Promise<{ message: string }> {
+        const user = await this.userRepo.findOne({ where: { id: userId }, relations: { company: true } });
         if (!user) throw new Error('Usuario no encontrado');
 
         if (user.role === UserRole.SUPER_ADMIN) {
             throw new Error('No se puede desactivar una cuenta SUPER_ADMIN');
+        }
+
+        if (actorRole !== UserRole.SUPER_ADMIN) {
+            if (user.role === UserRole.ADMIN) {
+                throw new Error('No tienes permisos para modificar la cuenta de otro ADMIN');
+            }
+            if (!actorCompanyId || user.company?.id !== actorCompanyId) {
+                throw new Error('Solo puedes gestionar usuarios de tu propia empresa');
+            }
         }
 
         user.isActive = isActive;

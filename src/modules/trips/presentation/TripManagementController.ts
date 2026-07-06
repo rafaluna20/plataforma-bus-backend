@@ -55,11 +55,14 @@ router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DR
             driverId, // undefined = no tocar; null o '' = quitar conductor; uuid = asignar
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
+            actorId: req.user?.sub,
         });
 
         return res.status(200).json({ message: 'Viaje reprogramado exitosamente', trip });
     } catch (error: any) {
-        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('otra empresa') || error.message?.includes('asignado a ti')) {
+            return res.status(403).json({ error: error.message });
+        }
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         if (error.message?.includes('ya tiene un viaje')) return res.status(409).json({ error: error.message });
         if (error.message?.includes('programado') || error.message?.includes('conflicto')) return res.status(409).json({ error: error.message });
@@ -84,11 +87,14 @@ router.patch('/:id/status', validateBody(UpdateTripStatusSchema), async (req: Re
             status,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
+            actorId: req.user?.sub,
         });
         return res.status(200).json({ message: `Estado actualizado a ${status}`, trip });
     } catch (error: any) {
         if (error.message?.includes('No se puede cambiar')) return res.status(400).json({ error: error.message });
-        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('otra empresa') || error.message?.includes('asignado a ti')) {
+            return res.status(403).json({ error: error.message });
+        }
         if (error.message?.includes('no está autorizado')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);

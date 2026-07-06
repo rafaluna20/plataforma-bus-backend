@@ -2,7 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { randomUUID } from 'crypto';
 
 // Extender Express Request para incluir Correlation ID
@@ -35,7 +35,7 @@ import { setupSwagger } from '../infrastructure/swagger';
 import { captureError } from '../infrastructure/monitoring/sentry';
 import { healthRouter } from '../infrastructure/monitoring/healthcheck';
 
-// Rate limiting global
+// Rate limiting global — por IP, cubre toda la API (incluida la pública).
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutos
     max: 200, // 200 peticiones por IP por ventana
@@ -43,6 +43,24 @@ const globalLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => req.path.startsWith('/health'), // No limitar health check (incluye /health/ready y /health/live)
+});
+
+/**
+ * Rate limiting por empresa — se agrega DESPUÉS de `authenticate` en las rutas
+ * de gestión B2B (companies, vehicles, routes, management/trips, admin,
+ * parcels), donde req.user.companyId ya está disponible. Sin esto, el límite
+ * global de arriba es por IP: una integración/bot mal configurado de UNA
+ * empresa podía agotar el cupo compartido de todas las demás empresas detrás
+ * del mismo NAT/proxy. SUPER_ADMIN no tiene companyId — cae al límite por IP
+ * (ipKeyGenerator normaliza IPv6 para no fragmentar el conteo por /64).
+ */
+const companyLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.COMPANY_RATE_LIMIT_MAX || '500'),
+    message: { error: 'Tu empresa alcanzó el límite de peticiones a la API. Intenta de nuevo en unos minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.user?.companyId || ipKeyGenerator(req.ip!),
 });
 
 class App {
@@ -147,18 +165,21 @@ class App {
         this.express.use(
             '/api/v1/companies',
             authenticate,
+            companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             companyRoutes
         );
         this.express.use(
             '/api/v1/vehicles',
             authenticate,
+            companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             vehicleRoutes
         );
         this.express.use(
             '/api/v1/routes',
             authenticate,
+            companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             routeRoutes
         );
@@ -167,6 +188,7 @@ class App {
         this.express.use(
             '/api/v1/management/trips',
             authenticate,
+            companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER),
             tripMgmtRoutes
         );
@@ -175,6 +197,7 @@ class App {
         this.express.use(
             '/api/v1/admin',
             authenticate,
+            companyLimiter,
             authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
             adminRoutes
         );
@@ -183,6 +206,7 @@ class App {
         this.express.use(
             '/api/v1/parcels',
             authenticate,
+            companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER),
             parcelRoutes
         );
