@@ -7,6 +7,26 @@ import { validateBody, RegisterSchema, LoginSchema } from '../validators/schemas
 const router = Router();
 const authService = new AuthService();
 
+// El access token vive SOLO en una cookie httpOnly — nunca en el JSON de
+// respuesta ni en localStorage — para que un script inyectado (XSS) no pueda
+// leerlo. 15 minutos, igual que JWT_EXPIRES_IN por defecto en AuthService.
+const ACCESS_TOKEN_COOKIE_MAX_AGE = 15 * 60 * 1000;
+
+const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string }) => {
+    res.cookie('access_token', tokens.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE,
+    });
+    res.cookie('refreshToken', tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+    });
+};
+
 // Rate limiting estricto para endpoints de autenticación
 const authLimiter = rateLimit({
     windowMs: 5 * 60 * 1000, // 5 minutos
@@ -34,17 +54,10 @@ router.post('/register', registerLimiter, validateBody(RegisterSchema), async (r
 
         const tokens = await authService.register({ name, email, password, docType, docNum, phone });
 
-        // Enviar refresh token como cookie HttpOnly segura
-        res.cookie('refreshToken', tokens.refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
-        });
+        setAuthCookies(res, tokens);
 
         return res.status(201).json({
             message: 'Cuenta creada exitosamente',
-            accessToken: tokens.accessToken,
             user: tokens.user,
         });
     } catch (error: any) {
@@ -64,17 +77,10 @@ router.post('/login', authLimiter, validateBody(LoginSchema), async (req: Reques
 
         const tokens = await authService.login({ email, password });
 
-        // Enviar refresh token como cookie HttpOnly
-        res.cookie('refreshToken', tokens.refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        setAuthCookies(res, tokens);
 
         return res.status(200).json({
             message: 'Sesión iniciada exitosamente',
-            accessToken: tokens.accessToken,
             user: tokens.user,
         });
     } catch (error: any) {
@@ -100,16 +106,9 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
 
         const tokens = await authService.refreshTokens(refreshToken);
 
-        // Renovar la cookie
-        res.cookie('refreshToken', tokens.refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        setAuthCookies(res, tokens);
 
         return res.status(200).json({
-            accessToken: tokens.accessToken,
             user: tokens.user,
         });
     } catch (error: any) {
@@ -128,7 +127,12 @@ router.post('/logout', authenticate, async (req: Request, res: Response, next: N
     try {
         await authService.logout(req.user!.sub);
 
-        // Limpiar cookie
+        // Limpiar cookies
+        res.clearCookie('access_token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict',
+        });
         res.clearCookie('refreshToken', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',

@@ -26,18 +26,21 @@ declare global {
 
 /**
  * Middleware de autenticación JWT.
- * Verifica el token Bearer en el header Authorization.
+ * Verifica el token Bearer en el header Authorization, o si no viene, en la
+ * cookie httpOnly `access_token` (que es como el navegador la envía para el
+ * frontend web — el header Bearer sigue soportado para clientes que no son
+ * el navegador: apps móviles, Postman, servicios que llaman a la API).
  * Si es válido, adjunta el payload al objeto request.
  */
 export const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
+    const token = bearerToken || req.cookies?.access_token;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
         res.status(401).json({ error: 'Acceso no autorizado. Se requiere token de autenticación.' });
         return;
     }
-
-    const token = authHeader.split(' ')[1];
 
     try {
         const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;

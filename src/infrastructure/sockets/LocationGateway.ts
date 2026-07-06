@@ -18,6 +18,13 @@ if (!JWT_SECRET) {
 
 const tripMgmtService = new TripManagementService();
 
+/** Extrae un valor de cookie puntual del header `Cookie` crudo del handshake. */
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+    if (!cookieHeader) return undefined;
+    const match = cookieHeader.split(';').map(c => c.trim()).find(c => c.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.slice(name.length + 1)) : undefined;
+}
+
 /** Payload del usuario autenticado, adjuntado en el handshake (ver setupAuthMiddleware). */
 function getSocketUser(socket: Socket): TokenPayload {
     return (socket.data as { user: TokenPayload }).user;
@@ -68,7 +75,12 @@ export class LocationGateway {
      */
     private setupAuthMiddleware() {
         this.io.use((socket: Socket, next) => {
-            const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+            // El frontend web ya no maneja el token en JS (vive en la cookie
+            // httpOnly access_token); el navegador la manda sola en el
+            // handshake si el cliente se conecta con withCredentials:true.
+            const token = socket.handshake.auth?.token
+                || socket.handshake.query?.token
+                || readCookie(socket.handshake.headers.cookie, 'access_token');
 
             if (!token || typeof token !== 'string') {
                 return next(new Error('Se requiere autenticación para conectarse'));
@@ -159,8 +171,10 @@ export class LocationGateway {
 
             /**
              * El chofer envía la actualización de GPS.
-             * SEGURIDAD: Verificar que el emisor tiene un JWT válido con rol DRIVER o ADMIN.
-             * Payload esperado: { tripId, lat, lng, speed?, bearing?, token }
+             * SEGURIDAD: el emisor ya quedó autenticado en el handshake de conexión
+             * (ver setupAuthMiddleware) — no hace falta un token aparte en cada
+             * emisión, solo verificar que su rol y asignación sean correctos.
+             * Payload esperado: { tripId, lat, lng, speed?, bearing? }
              */
             socket.on('driver_update_location', async (data: {
                 tripId: string;
@@ -168,7 +182,6 @@ export class LocationGateway {
                 lng: number;
                 speed?: number;
                 bearing?: number;
-                token: string; // JWT del conductor
             }) => {
                 // 1. Validar estructura del payload
                 if (!data.tripId || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
@@ -183,27 +196,15 @@ export class LocationGateway {
                     return;
                 }
 
-                // 3. Verificar JWT del conductor
-                if (!data.token) {
-                    socket.emit('error', { message: 'Se requiere token de autenticación para emitir ubicación' });
-                    return;
-                }
+                const payload = getSocketUser(socket);
 
-                let payload: TokenPayload;
-                try {
-                    payload = jwt.verify(data.token, JWT_SECRET) as TokenPayload;
-                } catch {
-                    socket.emit('error', { message: 'Token inválido o expirado' });
-                    return;
-                }
-
-                // 4. Verificar que el usuario tiene rol de DRIVER o ADMIN
+                // 3. Verificar que el usuario tiene rol de DRIVER o ADMIN
                 if (payload.role !== UserRole.DRIVER && payload.role !== UserRole.ADMIN && payload.role !== UserRole.SUPER_ADMIN) {
                     socket.emit('error', { message: 'Solo los conductores pueden emitir actualizaciones de ubicación' });
                     return;
                 }
 
-                // 4b. SEGURIDAD: un DRIVER solo puede emitir GPS para viajes que tiene asignados.
+                // 3b. SEGURIDAD: un DRIVER solo puede emitir GPS para viajes que tiene asignados.
                 // ADMIN/SUPER_ADMIN quedan exentos (monitoreo/pruebas de su empresa).
                 if (payload.role === UserRole.DRIVER) {
                     try {
