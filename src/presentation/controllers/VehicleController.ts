@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { VehicleService } from '../../application/services/VehicleService';
 import { AuditLogService } from '../../application/services/AuditLogService';
 import { authorizeCompany, authorizeOwnCompanyResource } from '../middlewares/auth.middleware';
+import { validateBody, CreateVehicleSchema, UpdateVehicleSchema } from '../validators/schemas';
 
 const router = Router();
 const vehicleService = new VehicleService();
@@ -15,15 +16,9 @@ const resolveVehicleCompanyId = async (req: Request) => {
  * POST /api/v1/vehicles
  * Registrar un vehículo nuevo en la flota de una empresa
  */
-router.post('/', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorizeCompany, validateBody(CreateVehicleSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl } = req.body;
-
-        if (!companyId || !plateNumber || !vehicleType || !serviceMode || !capacity) {
-            return res.status(400).json({
-                error: 'Campos requeridos: companyId, plateNumber, vehicleType, serviceMode, capacity',
-            });
-        }
 
         const vehicle = await vehicleService.create({
             companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl,
@@ -91,7 +86,7 @@ router.get('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (
  * PUT /api/v1/vehicles/:id
  * Actualizar configuración de vehículo (plantilla de asientos, estado)
  */
-router.put('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), validateBody(UpdateVehicleSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const vehicle = await vehicleService.update(id, req.body);
@@ -119,7 +114,7 @@ router.put('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (
  * PATCH /api/v1/vehicles/:id
  * Actualizar parcialmente un vehículo (alias de PUT, acepta campos opcionales)
  */
-router.patch('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', authorizeOwnCompanyResource(resolveVehicleCompanyId), validateBody(UpdateVehicleSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const vehicle = await vehicleService.update(id, req.body);

@@ -5,6 +5,8 @@
 import { z } from 'zod';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { TripStatus } from '../../modules/trips/domain/TripEntity';
+import { VehicleType, ServiceMode } from '../../infrastructure/database/entities/VehicleEntity';
+import { ParcelStatus } from '../../modules/parcels/domain/ParcelEntity';
 
 // ─── Auth Schemas ─────────────────────────────────────────────────────────────
 
@@ -82,6 +84,14 @@ export const CreateBookingSchema = z.object({
     { message: 'El origen y el destino no pueden ser el mismo punto', path: ['endWaypointId'] }
 );
 
+export const CreateDigitalBookingSchema = CreateBookingSchema.and(z.object({
+    paymentDetails: z.object({
+        method: z.string().min(1, 'El método de pago es requerido'),
+        token: z.string().optional(),
+        phoneNumber: z.string().optional(),
+    }, { error: 'paymentDetails es requerido' }),
+}));
+
 // ─── Trip Management Schemas ──────────────────────────────────────────────────
 
 export const CreateTripSchema = z.object({
@@ -103,6 +113,19 @@ export const CreateTripSchema = z.object({
             { message: 'La fecha de salida debe ser en el futuro' }
         ),
 });
+
+export const UpdateTripSchema = z.object({
+    departureTime: z
+        .string()
+        .refine((val) => !isNaN(Date.parse(val)), { message: 'Formato de fecha inválido. Use ISO 8601 (ej: 2026-07-15T08:00:00Z)' })
+        .optional(),
+    vehicleId: z.string().uuid('vehicleId debe ser un UUID válido').optional(),
+    // undefined = no tocar; '' o null = quitar conductor; uuid = asignar
+    driverId: z.union([z.string().uuid('driverId debe ser un UUID válido'), z.literal(''), z.null()]).optional(),
+}).refine(
+    (data) => data.departureTime !== undefined || data.vehicleId !== undefined || data.driverId !== undefined,
+    { message: 'Debe proveer al menos uno de: departureTime, vehicleId, driverId' }
+);
 
 export const UpdateTripStatusSchema = z.object({
     status: z.nativeEnum(TripStatus, {
@@ -138,30 +161,110 @@ export const CreateCompanySchema = z.object({
 // ─── Vehicle Schemas ──────────────────────────────────────────────────────────
 
 export const CreateVehicleSchema = z.object({
+    companyId: z.string().uuid('companyId debe ser un UUID válido'),
     plateNumber: z
         .string()
         .min(5, 'La placa debe tener al menos 5 caracteres')
         .max(10, 'La placa no puede superar 10 caracteres')
-        .regex(/^[A-Z0-9\-]+$/i, 'Formato de placa inválido')
-        .toUpperCase(),
-    brand: z
-        .string()
-        .min(2, 'La marca debe tener al menos 2 caracteres')
-        .max(50, 'La marca no puede superar 50 caracteres')
-        .trim(),
-    model: z
-        .string()
-        .min(1, 'El modelo es requerido')
-        .max(50, 'El modelo no puede superar 50 caracteres')
-        .trim(),
+        .regex(/^[A-Z0-9\-]+$/i, 'Formato de placa inválido'),
+    vehicleType: z.nativeEnum(VehicleType, {
+        error: `Tipo de vehículo inválido. Use: ${Object.values(VehicleType).join(', ')}`,
+    }),
+    serviceMode: z.nativeEnum(ServiceMode, {
+        error: `Modo de servicio inválido. Use: ${Object.values(ServiceMode).join(', ')}`,
+    }),
+    seatTemplate: z.any().optional(),
     capacity: z
         .number()
         .int('La capacidad debe ser un número entero')
         .min(1, 'La capacidad mínima es 1')
         .max(100, 'La capacidad máxima es 100'),
-    companyId: z
+    imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+});
+
+export const UpdateVehicleSchema = z.object({
+    plateNumber: z
         .string()
-        .uuid('companyId debe ser un UUID válido'),
+        .min(5, 'La placa debe tener al menos 5 caracteres')
+        .max(10, 'La placa no puede superar 10 caracteres')
+        .regex(/^[A-Z0-9\-]+$/i, 'Formato de placa inválido')
+        .optional(),
+    vehicleType: z.nativeEnum(VehicleType).optional(),
+    serviceMode: z.nativeEnum(ServiceMode).optional(),
+    seatTemplate: z.any().optional(),
+    capacity: z.number().int().min(1).max(100).optional(),
+    isActive: z.boolean().optional(),
+    imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+});
+
+// ─── Route / Station Schemas ──────────────────────────────────────────────────
+
+export const CreateStationSchema = z.object({
+    companyId: z.string().uuid('companyId debe ser un UUID válido').optional(),
+    name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(100).trim(),
+    address: z.string().max(200).optional(),
+    city: z.string().min(2, 'La ciudad debe tener al menos 2 caracteres').max(50).trim(),
+    latitude: z.number().min(-90).max(90, 'Latitud inválida'),
+    longitude: z.number().min(-180).max(180, 'Longitud inválida'),
+});
+
+export const UpdateStationSchema = z.object({
+    name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(100).trim(),
+    city: z.string().min(2, 'La ciudad debe tener al menos 2 caracteres').max(50).trim(),
+    address: z.string().max(200).optional(),
+    latitude: z.number().min(-90).max(90, 'Latitud inválida').optional(),
+    longitude: z.number().min(-180).max(180, 'Longitud inválida').optional(),
+});
+
+const WaypointInputSchema = z.object({
+    id: z.string().uuid().optional(),
+    stationId: z.string().uuid('stationId debe ser un UUID válido'),
+    stopOrder: z.number().int().min(1, 'stopOrder debe ser mayor a 0'),
+    estimatedDurationMins: z.number().int().min(0, 'estimatedDurationMins no puede ser negativo'),
+    basePrice: z.number().min(0, 'basePrice no puede ser negativo'),
+    basePriceFloor1: z.number().min(0).optional().nullable(),
+});
+
+export const CreateRouteSchema = z.object({
+    companyId: z.string().uuid('companyId debe ser un UUID válido'),
+    name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(100).trim(),
+    serviceMode: z.nativeEnum(ServiceMode, {
+        error: `Modo de servicio inválido. Use: ${Object.values(ServiceMode).join(', ')}`,
+    }),
+    polyline: z.string().optional().nullable(),
+    waypoints: z.array(WaypointInputSchema).min(2, 'Una ruta debe tener al menos 2 paradas (Origen y Destino)'),
+});
+
+export const UpdateRouteSchema = z.object({
+    name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(100).trim().optional(),
+    serviceMode: z.nativeEnum(ServiceMode).optional(),
+    polyline: z.string().optional().nullable(),
+    waypoints: z.array(WaypointInputSchema).min(2, 'Una ruta debe tener al menos 2 paradas (Origen y Destino)').optional(),
+});
+
+// ─── Parcel Schemas ───────────────────────────────────────────────────────────
+
+export const CreateParcelSchema = z.object({
+    tripId: z.string().uuid('tripId debe ser un UUID válido'),
+    senderName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(150).trim(),
+    senderDoc: z.string().min(6, 'El documento debe tener al menos 6 caracteres').max(20).trim(),
+    receiverName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(150).trim(),
+    receiverDoc: z.string().min(6, 'El documento debe tener al menos 6 caracteres').max(20).trim(),
+    startWaypointId: z.string().uuid('startWaypointId debe ser un UUID válido'),
+    endWaypointId: z.string().uuid('endWaypointId debe ser un UUID válido'),
+    description: z.string().max(500).optional(),
+    weightKg: z.coerce.number().min(0, 'weightKg no puede ser negativo').optional(),
+    totalPrice: z.coerce.number().min(0, 'totalPrice no puede ser negativo'),
+    paymentMethod: z.string().optional(),
+}).refine(
+    (data) => data.startWaypointId !== data.endWaypointId,
+    { message: 'El origen y el destino no pueden ser el mismo punto', path: ['endWaypointId'] }
+);
+
+export const UpdateParcelStatusSchema = z.object({
+    status: z.nativeEnum(ParcelStatus, {
+        error: `Estado inválido. Use: ${Object.values(ParcelStatus).join(', ')}`,
+    }),
 });
 
 // ─── Search Schemas ───────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { TripManagementService } from '../application/TripManagementService';
 import { authorize } from '../../../presentation/middlewares/auth.middleware';
 import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
+import { validateBody, CreateTripSchema, UpdateTripSchema, UpdateTripStatusSchema } from '../../../presentation/validators/schemas';
 
 const router = Router();
 const tripMgmtService = new TripManagementService();
@@ -11,13 +12,9 @@ const tripMgmtService = new TripManagementService();
  * Programar una nueva salida/viaje
  * Restringido a ADMIN/SUPER_ADMIN/DRIVER (AGENCY_SELLER solo autoriza abordaje, no crea viajes)
  */
-router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), validateBody(CreateTripSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { routeId, vehicleId, departureTime, driverId } = req.body;
-
-        if (!routeId || !vehicleId || !departureTime) {
-            return res.status(400).json({ error: 'Campos requeridos: routeId, vehicleId, departureTime' });
-        }
 
         const trip = await tripMgmtService.create({
             routeId,
@@ -47,14 +44,10 @@ router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER
  * Editar/Reprogramar un viaje (cambiar salida o vehículo)
  * Restringido a ADMIN/SUPER_ADMIN/DRIVER (AGENCY_SELLER no reprograma viajes)
  */
-router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), validateBody(UpdateTripSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { departureTime, vehicleId, driverId } = req.body;
         const tripId = req.params.id as string;
-
-        if (departureTime === undefined && vehicleId === undefined && driverId === undefined) {
-            return res.status(400).json({ error: 'Debe proveer al menos uno de: departureTime, vehicleId, driverId' });
-        }
 
         const trip = await tripMgmtService.update(tripId, {
             departureTime: departureTime ? new Date(departureTime) : undefined,
@@ -82,11 +75,9 @@ router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DR
  * abordaje (SCHEDULED→BOARDING→IN_TRANSIT), pero solo conductor/admin puede marcar
  * COMPLETED (confirmar llegada) — esa regla fina se valida en el service según el rol.
  */
-router.patch('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id/status', validateBody(UpdateTripStatusSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status } = req.body;
-        if (!status) return res.status(400).json({ error: 'Campo requerido: status' });
-
         const tripId = req.params.id as string;
         const trip = await tripMgmtService.updateStatus({
             tripId,

@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ParcelService, CreateParcelDTO } from '../application/ParcelService';
-import { ParcelStatus } from '../domain/ParcelEntity';
 import { AuditLogService } from '../../../application/services/AuditLogService';
+import { validateBody, CreateParcelSchema, UpdateParcelStatusSchema } from '../../../presentation/validators/schemas';
 
 const router = Router();
 const parcelService = new ParcelService();
@@ -13,7 +13,7 @@ const parcelService = new ParcelService();
  * Body: { tripId, senderName, senderDoc, receiverName, receiverDoc,
  *         startWaypointId, endWaypointId, description?, weightKg?, totalPrice, paymentMethod? }
  */
-router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', validateBody(CreateParcelSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const {
             tripId,
@@ -28,13 +28,6 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
             totalPrice,
             paymentMethod,
         } = req.body;
-
-        // Validación de campos requeridos
-        if (!tripId || !senderName || !senderDoc || !receiverName || !receiverDoc || !startWaypointId || !endWaypointId || !totalPrice) {
-            return res.status(400).json({
-                error: 'Campos requeridos: tripId, senderName, senderDoc, receiverName, receiverDoc, startWaypointId, endWaypointId, totalPrice',
-            });
-        }
 
         const dto: CreateParcelDTO = {
             tripId,
@@ -134,16 +127,9 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
  * Body: { status: 'RECEIVED' | 'IN_TRANSIT' | 'READY_FOR_PICKUP' | 'DELIVERED' }
  * ✅ REQUIERE autenticación (ADMIN, SUPER_ADMIN)
  */
-router.patch('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id/status', validateBody(UpdateParcelStatusSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { status } = req.body;
-
-        const validStatuses = Object.values(ParcelStatus);
-        if (!status || !validStatuses.includes(status)) {
-            return res.status(400).json({
-                error: `Estado inválido. Valores permitidos: ${validStatuses.join(', ')}`,
-            });
-        }
 
         const parcel = await parcelService.updateParcelStatus(
             req.params.id as string,

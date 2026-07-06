@@ -3,6 +3,7 @@ import { BookingService } from '../application/BookingService';
 import { authenticate } from '../../../presentation/middlewares/auth.middleware';
 import { MockPaymentAdapter } from '../../payments/infrastructure/MockPaymentAdapter';
 import { AuditLogService } from '../../../application/services/AuditLogService';
+import { validateBody, CreateBookingSchema, CreateDigitalBookingSchema } from '../../../presentation/validators/schemas';
 
 
 const router = Router();
@@ -15,7 +16,7 @@ const paymentAdapter = new MockPaymentAdapter();
  * ✅ REQUIERE autenticación (ADMIN, SUPER_ADMIN o DRIVER en mostrador)
  * Body: { tripId, passengerName, passengerDocType, passengerDocNum, startWaypointId, endWaypointId, seatId }
  */
-router.post('/', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const {
             tripId,
@@ -26,13 +27,6 @@ router.post('/', authenticate, async (req: Request, res: Response, next: NextFun
             endWaypointId,
             seatId,
         } = req.body;
-
-        // Validación básica de campos requeridos
-        if (!tripId || !passengerName || !passengerDocType || !passengerDocNum || !startWaypointId || !endWaypointId || !seatId) {
-            return res.status(400).json({
-                error: 'Todos los campos son requeridos: tripId, passengerName, passengerDocType, passengerDocNum, startWaypointId, endWaypointId, seatId',
-            });
-        }
 
         // Pasar el userId del usuario autenticado para trazabilidad
         const booking = await bookingService.createCashBooking({
@@ -88,7 +82,7 @@ router.post('/', authenticate, async (req: Request, res: Response, next: NextFun
  * Crea una reserva digital y cobra instantáneamente (Tarjeta, Yape, Plin).
  * ✅ REQUIERE autenticación
  */
-router.post('/digital', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const {
             tripId,
@@ -100,12 +94,6 @@ router.post('/digital', authenticate, async (req: Request, res: Response, next: 
             seatId,
             paymentDetails, // { method, token, phoneNumber }
         } = req.body;
-
-        if (!tripId || !passengerName || !passengerDocType || !passengerDocNum || !startWaypointId || !endWaypointId || !seatId || !paymentDetails?.method) {
-            return res.status(400).json({
-                error: 'Faltan campos requeridos incluyendo paymentDetails con el método.',
-            });
-        }
 
         const booking = await bookingService.createDigitalBooking(
             {

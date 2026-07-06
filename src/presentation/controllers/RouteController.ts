@@ -5,6 +5,7 @@ import { authorizeCompany, authorizeOwnCompanyResource } from '../middlewares/au
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { AppDataSource } from '../../infrastructure/database/data-source';
 import { StationEntity } from '../../infrastructure/database/entities/StationEntity';
+import { validateBody, CreateStationSchema, UpdateStationSchema, CreateRouteSchema, UpdateRouteSchema } from '../validators/schemas';
 
 const router = Router();
 const routeService = new RouteService();
@@ -52,13 +53,9 @@ const authorizeStationOwnership = (resolveStationCompanyId: (req: Request) => Pr
  * POST /api/v1/routes/stations
  * Crear un paradero o agencia con coordenadas geográficas
  */
-router.post('/stations', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/stations', authorizeCompany, validateBody(CreateStationSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, name, address, city, latitude, longitude } = req.body;
-
-        if (!name || !city || latitude === undefined || longitude === undefined) {
-            return res.status(400).json({ error: 'Campos requeridos: name, city, latitude, longitude' });
-        }
 
         // Solo SUPER_ADMIN puede crear terminales públicos (sin empresa dueña)
         if (!companyId && req.user!.role !== UserRole.SUPER_ADMIN) {
@@ -105,14 +102,10 @@ const resolveStationCompanyId = async (req: Request) => {
     return station.company?.id ?? null;
 };
 
-router.put('/stations/:id', authorizeStationOwnership(resolveStationCompanyId), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/stations/:id', authorizeStationOwnership(resolveStationCompanyId), validateBody(UpdateStationSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const { name, city, address, latitude, longitude } = req.body;
-
-        if (!name || !city) {
-            return res.status(400).json({ error: 'Campos requeridos: name, city' });
-        }
 
         const station = await routeService.updateStation(id, { name, city, address, latitude, longitude });
         return res.status(200).json({ message: 'Estación actualizada exitosamente', station });
@@ -145,15 +138,9 @@ router.delete('/stations/:id', authorizeStationOwnership(resolveStationCompanyId
  * Crear una ruta completa con sus paradas intermedias (waypoints)
  * Body: { companyId, name, serviceMode, polyline?, waypoints: [{ stationId, stopOrder, estimatedDurationMins, basePrice }] }
  */
-router.post('/', authorizeCompany, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authorizeCompany, validateBody(CreateRouteSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { companyId, name, serviceMode, polyline, waypoints } = req.body;
-
-        if (!companyId || !name || !serviceMode || !waypoints) {
-            return res.status(400).json({
-                error: 'Campos requeridos: companyId, name, serviceMode, waypoints[]',
-            });
-        }
 
         const route = await routeService.createRoute({ companyId, name, serviceMode, polyline, waypoints });
 
@@ -211,7 +198,7 @@ router.get('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), async (re
  * PUT /api/v1/routes/:id
  * Actualizar una ruta y sus waypoints
  */
-router.put('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authorizeOwnCompanyResource(resolveRouteCompanyId), validateBody(UpdateRouteSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const id = req.params.id as string;
         const route = await routeService.updateRoute(id, req.body);

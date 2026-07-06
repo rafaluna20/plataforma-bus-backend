@@ -33,6 +33,7 @@ import { UserRole } from '../infrastructure/database/entities/UserEntity';
 import { logger } from '../infrastructure/logger';
 import { setupSwagger } from '../infrastructure/swagger';
 import { captureError } from '../infrastructure/monitoring/sentry';
+import { healthRouter } from '../infrastructure/monitoring/healthcheck';
 
 // Rate limiting global
 const globalLimiter = rateLimit({
@@ -41,7 +42,7 @@ const globalLimiter = rateLimit({
     message: { error: 'Demasiadas peticiones desde esta IP. Intenta de nuevo en 15 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === '/health', // No limitar health check
+    skip: (req) => req.path.startsWith('/health'), // No limitar health check (incluye /health/ready y /health/live)
 });
 
 class App {
@@ -123,15 +124,10 @@ class App {
     }
 
     private routes(): void {
-        // Health Check (público)
-        this.express.get('/health', (req: Request, res: Response) => {
-            res.status(200).json({
-                status: 'OK',
-                message: 'Transport API is running',
-                timestamp: new Date(),
-                version: '2.0.0',
-            });
-        });
+        // Health Check (público) — verifica BD y memoria de verdad; expone
+        // /health, /health/ready y /health/live para Docker HEALTHCHECK /
+        // probes de Kubernetes (ver infrastructure/monitoring/healthcheck.ts).
+        this.express.use('/health', healthRouter);
 
         // ==================== API v1 ====================
 
