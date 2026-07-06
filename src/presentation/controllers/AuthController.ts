@@ -16,14 +16,14 @@ const ACCESS_TOKEN_COOKIE_MAX_AGE = 15 * 60 * 1000;
 const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string }) => {
     res.cookie('access_token', tokens.accessToken, {
         httpOnly: true,
-        secure: !isDevelopment,
-        sameSite: 'strict',
+        secure: true, // Debe ser true siempre para sameSite='none'
+        sameSite: 'none',
         maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE,
     });
     res.cookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
-        secure: !isDevelopment,
-        sameSite: 'strict',
+        secure: true, // Debe ser true siempre para sameSite='none'
+        sameSite: 'none',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
     });
 };
@@ -131,13 +131,13 @@ router.post('/logout', authenticate, async (req: Request, res: Response, next: N
         // Limpiar cookies
         res.clearCookie('access_token', {
             httpOnly: true,
-            secure: !isDevelopment,
-            sameSite: 'strict',
+            secure: true,
+            sameSite: 'none',
         });
         res.clearCookie('refreshToken', {
             httpOnly: true,
-            secure: !isDevelopment,
-            sameSite: 'strict',
+            secure: true,
+            sameSite: 'none',
         });
 
         return res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
