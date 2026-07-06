@@ -4,6 +4,10 @@ import { authenticate } from '../../../presentation/middlewares/auth.middleware'
 import { MockPaymentAdapter } from '../../payments/infrastructure/MockPaymentAdapter';
 import { AuditLogService } from '../../../application/services/AuditLogService';
 import { validateBody, CreateBookingSchema, CreateDigitalBookingSchema } from '../../../presentation/validators/schemas';
+import { AppDataSource } from '../../../infrastructure/database/data-source';
+import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
+import { BookingEntity } from '../domain/BookingEntity';
+import { ParcelEntity } from '../../parcels/domain/ParcelEntity';
 
 
 const router = Router();
@@ -148,6 +152,136 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
         if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
             return res.status(400).json({ error: error.message });
         }
+        next(error);
+    }
+});
+
+/**
+ * GET /api/v1/bookings/passenger/lookup
+ * Busca un pasajero por su tipo y número de documento (DNI o RUC).
+ * Prioriza la búsqueda local en PostgreSQL (UserEntity, BookingEntity, ParcelEntity).
+ * Si no lo encuentra, consulta el API externo (apisperu).
+ * ✅ REQUIERE autenticación
+ */
+router.get('/passenger/lookup', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { docType, docNum } = req.query;
+        if (!docType || !docNum) {
+            return res.status(400).json({ error: 'Faltan parámetros docType o docNum.' });
+        }
+
+        const docTypeStr = String(docType).toUpperCase();
+        const docNumStr = String(docNum).trim();
+
+        // 1. Buscar en la Base de Datos Local
+        // A. Buscar en Tabla de Usuarios (users)
+        const userRepo = AppDataSource.getRepository(UserEntity);
+        const localUser = await userRepo.findOne({
+            where: { docNum: docNumStr, docType: docTypeStr }
+        });
+
+        if (localUser) {
+            return res.status(200).json({
+                source: 'local_database',
+                name: localUser.name,
+                phone: localUser.phone || '',
+            });
+        }
+
+        // B. Buscar en Reservas Previas (bookings)
+        const bookingRepo = AppDataSource.getRepository(BookingEntity);
+        const localBooking = await bookingRepo.findOne({
+            where: { passengerDocNum: docNumStr, passengerDocType: docTypeStr },
+            order: { createdAt: 'DESC' }
+        });
+
+        if (localBooking) {
+            return res.status(200).json({
+                source: 'local_database',
+                name: localBooking.passengerName,
+                phone: '',
+            });
+        }
+
+        // C. Buscar en Encomiendas Previas (parcels)
+        const parcelRepo = AppDataSource.getRepository(ParcelEntity);
+        const localParcelSender = await parcelRepo.findOne({
+            where: { senderDoc: docNumStr },
+            order: { createdAt: 'DESC' }
+        });
+
+        if (localParcelSender) {
+            return res.status(200).json({
+                source: 'local_database',
+                name: localParcelSender.senderName,
+                phone: '',
+            });
+        }
+
+        const localParcelReceiver = await parcelRepo.findOne({
+            where: { receiverDoc: docNumStr },
+            order: { createdAt: 'DESC' }
+        });
+
+        if (localParcelReceiver) {
+            return res.status(200).json({
+                source: 'local_database',
+                name: localParcelReceiver.receiverName,
+                phone: '',
+            });
+        }
+
+        // 2. Buscar en API externa (apisperu) si no se encontró localmente
+        const token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFrYWxscGEuc2FjQGdtYWlsLmNvbSJ9.kyTC7ka84weV9PqA3n4nDV8y2i4cc4EFgESWgADdp4o';
+
+        if (docTypeStr === 'DNI' && docNumStr.length === 8) {
+            const url = `https://dniruc.apisperu.com/api/v1/dni/${docNumStr}?token=${token}`;
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data: any = await response.json();
+                    if (data.nombres) {
+                        const fullName = [data.nombres, data.apellidoPaterno, data.apellidoMaterno]
+                            .filter(Boolean)
+                            .join(' ')
+                            .trim();
+                        return res.status(200).json({
+                            source: 'apis_peru',
+                            name: fullName,
+                            phone: '',
+                        });
+                    }
+                }
+            } catch (apiErr) {
+                console.error('Error llamando a apisperu DNI:', apiErr);
+            }
+        } else if (docTypeStr === 'RUC' && docNumStr.length === 11) {
+            const url = `https://dniruc.apisperu.com/api/v1/ruc/${docNumStr}?token=${token}`;
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data: any = await response.json();
+                    const name = data.razonSocial || data.nombre || data.nombreOrazonSocial;
+                    if (name) {
+                        return res.status(200).json({
+                            source: 'apis_peru',
+                            name: name.trim(),
+                            phone: '',
+                        });
+                    }
+                }
+            } catch (apiErr) {
+                console.error('Error llamando a apisperu RUC:', apiErr);
+            }
+        }
+
+        // Si no se encuentra en ningún lado, se devuelve éxito con campos vacíos
+        return res.status(200).json({
+            source: 'not_found',
+            name: '',
+            phone: '',
+        });
+    } catch (error) {
         next(error);
     }
 });
