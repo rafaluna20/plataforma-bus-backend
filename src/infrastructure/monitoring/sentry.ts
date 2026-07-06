@@ -10,6 +10,7 @@
  */
 
 import { logger } from '../logger';
+import { deployEnv } from '../env';
 
 // Interfaz mínima para compatibilidad sin instalar Sentry
 interface SentryLike {
@@ -37,7 +38,7 @@ export async function initSentry(): Promise<void> {
 
         Sentry.init({
             dsn,
-            environment: process.env.NODE_ENV || 'development',
+            environment: deployEnv,
             release: process.env.npm_package_version || '1.0.0',
             // Capturar el 100% de transacciones en desarrollo, 10% en producción
             tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,

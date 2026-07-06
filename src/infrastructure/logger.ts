@@ -1,4 +1,5 @@
 import { createLogger, format, transports } from 'winston';
+import { isDevelopment } from './env';
 
 const { combine, timestamp, colorize, printf, json } = format;
 
@@ -11,9 +12,9 @@ export const logger = createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: combine(
         timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        process.env.NODE_ENV === 'production'
-            ? json()
-            : combine(colorize(), devFormat)
+        isDevelopment
+            ? combine(colorize(), devFormat)
+            : json()
     ),
     transports: [
         new transports.Console(),

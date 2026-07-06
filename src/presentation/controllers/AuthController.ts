@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { AuthService } from '../../application/services/AuthService';
 import { authenticate } from '../middlewares/auth.middleware';
 import { validateBody, RegisterSchema, LoginSchema } from '../validators/schemas';
+import { isDevelopment } from '../../infrastructure/env';
 
 const router = Router();
 const authService = new AuthService();
@@ -15,13 +16,13 @@ const ACCESS_TOKEN_COOKIE_MAX_AGE = 15 * 60 * 1000;
 const setAuthCookies = (res: Response, tokens: { accessToken: string; refreshToken: string }) => {
     res.cookie('access_token', tokens.accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: !isDevelopment,
         sameSite: 'strict',
         maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE,
     });
     res.cookie('refreshToken', tokens.refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: !isDevelopment,
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
     });
@@ -130,12 +131,12 @@ router.post('/logout', authenticate, async (req: Request, res: Response, next: N
         // Limpiar cookies
         res.clearCookie('access_token', {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: !isDevelopment,
             sameSite: 'strict',
         });
         res.clearCookie('refreshToken', {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: !isDevelopment,
             sameSite: 'strict',
         });
 

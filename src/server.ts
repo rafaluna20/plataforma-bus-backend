@@ -7,6 +7,7 @@ import { LocationGateway } from './infrastructure/sockets/LocationGateway';
 import { setSocketServer } from './infrastructure/sockets/SocketBus';
 import { logger } from './infrastructure/logger';
 import { initSentry, captureError } from './infrastructure/monitoring/sentry';
+import { deployEnv } from './infrastructure/env';
 
 const PORT = process.env.PORT || 3001;
 
@@ -50,7 +51,7 @@ const startServer = async () => {
             logger.info(`🚀 Servidor corriendo en el puerto ${PORT}`);
             logger.info(`🌍 Health Check: http://localhost:${PORT}/health`);
             logger.info(`🔐 Auth API: http://localhost:${PORT}/api/v1/auth`);
-            logger.info(`🌐 Entorno: ${process.env.NODE_ENV || 'development'}`);
+            logger.info(`🌐 Entorno: ${deployEnv} (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
         });
 
         // 5. Manejo graceful de señales de cierre

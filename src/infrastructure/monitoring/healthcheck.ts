@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { AppDataSource } from '../database/data-source';
 import { logger } from '../logger';
+import { deployEnv } from '../env';
 
 export const healthRouter = Router();
 
@@ -42,7 +43,7 @@ healthRouter.get('/', async (_req: Request, res: Response): Promise<void> => {
         timestamp: new Date().toISOString(),
         uptime: Math.floor(process.uptime()),
         version: process.env.npm_package_version || '1.0.0',
-        environment: process.env.NODE_ENV || 'development',
+        environment: deployEnv,
         checks: {
             database: { status: 'ok' },
             memory: { status: 'ok' },

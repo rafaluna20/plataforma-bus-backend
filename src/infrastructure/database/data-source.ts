@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { isDevelopment } from '../env';
 
 config();
 
@@ -8,8 +9,11 @@ config();
 const requiredEnvVars = ['DB_HOST', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME'];
 const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
 
-if (missingVars.length > 0 && process.env.NODE_ENV === 'production') {
-    console.error(`❌ Variables de entorno faltantes en producción: ${missingVars.join(', ')}`);
+// !isDevelopment (no === 'production'): así un despliegue con NODE_ENV mal
+// configurado (ej. "staging" en vez de "production") sigue exigiendo estas
+// variables en vez de arrancar en silencio con los defaults de desarrollo.
+if (missingVars.length > 0 && !isDevelopment) {
+    console.error(`❌ Variables de entorno faltantes fuera de desarrollo: ${missingVars.join(', ')}`);
     process.exit(1);
 }
 
@@ -18,9 +22,9 @@ if (missingVars.length > 0) {
 }
 
 // ─── Validación de secretos JWT ───────────────────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
+if (!isDevelopment) {
     if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'CHANGE_THIS_SECRET_IN_PRODUCTION') {
-        console.error('❌ JWT_SECRET no configurado o usa el valor por defecto. Configura un secreto seguro en producción.');
+        console.error('❌ JWT_SECRET no configurado o usa el valor por defecto. Configura un secreto seguro.');
         process.exit(1);
     }
     if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET === 'CHANGE_THIS_REFRESH_SECRET_IN_PRODUCTION') {
@@ -36,9 +40,11 @@ export const AppDataSource = new DataSource({
     username: process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD || 'dev_password_only',
     database: process.env.DB_NAME || 'transporte_db',
-    // ⚠️ NUNCA usar synchronize:true en producción — puede destruir el esquema
+    // ⚠️ NUNCA usar synchronize:true fuera de desarrollo local — puede destruir
+    // el esquema. Opt-in explícito por isDevelopment (no "!== production"): un
+    // NODE_ENV mal configurado no debe activar esto por accidente.
     // Usar migraciones: npm run migration:generate / migration:run
-    synchronize: process.env.NODE_ENV !== 'production',
+    synchronize: isDevelopment,
     // Opt-in explícito, no automático por NODE_ENV: muchos Postgres gestionados
     // (Render, Railway, Supabase, RDS) exigen TLS con certificados fuera de la
     // cadena de confianza por defecto de Node (de ahí rejectUnauthorized:false
@@ -51,7 +57,8 @@ export const AppDataSource = new DataSource({
     // no depende de que alguien recuerde correr `migration:run` a mano antes
     // de cada deploy con cambios de esquema.
     migrationsRun: true,
-    logging: process.env.NODE_ENV === 'development' ? ['error'] : ['error'],
+    // (antes ambas ramas de este ternario devolvían lo mismo — no hacía nada)
+    logging: isDevelopment ? ['query', 'error'] : ['error'],
     // El segundo patrón recoge entities de módulos ya extraídos a src/modules/*/domain/
     // (ver src/modules/parcels como piloto de monolito modular).
     entities: [__dirname + '/entities/*.{js,ts}', __dirname + '/../../modules/*/domain/*.{js,ts}'],

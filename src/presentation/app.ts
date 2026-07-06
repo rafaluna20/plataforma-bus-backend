@@ -34,6 +34,7 @@ import { logger } from '../infrastructure/logger';
 import { setupSwagger } from '../infrastructure/swagger';
 import { captureError } from '../infrastructure/monitoring/sentry';
 import { healthRouter } from '../infrastructure/monitoring/healthcheck';
+import { isDevelopment } from '../infrastructure/env';
 
 // Rate limiting global — por IP, cubre toda la API (incluida la pública).
 const globalLimiter = rateLimit({
@@ -92,8 +93,10 @@ class App {
             origin: (origin, callback) => {
                 // Permitir peticiones sin origin (ej. Postman, mobile apps)
                 if (!origin) return callback(null, true);
-                // En desarrollo, permitir cualquier localhost sin warnings
-                if (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost')) {
+                // Solo en desarrollo local confirmado, permitir cualquier localhost
+                // sin warnings (isDevelopment, no "!== production": un NODE_ENV mal
+                // configurado no debe relajar CORS por accidente).
+                if (isDevelopment && origin.startsWith('http://localhost')) {
                     return callback(null, true);
                 }
                 if (allowedOrigins.includes(origin)) {
@@ -232,7 +235,7 @@ class App {
             // No exponer detalles internos en producción
             res.status(500).json({
                 error: 'Internal Server Error',
-                message: process.env.NODE_ENV === 'development' ? err.message : 'Ocurrió un error inesperado.',
+                message: isDevelopment ? err.message : 'Ocurrió un error inesperado.',
                 correlationId: req.correlationId, // Devolver ID de tracking al cliente para reporte de bugs
             });
         });
