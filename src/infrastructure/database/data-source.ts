@@ -39,6 +39,16 @@ export const AppDataSource = new DataSource({
     // ⚠️ NUNCA usar synchronize:true en producción — puede destruir el esquema
     // Usar migraciones: npm run migration:generate / migration:run
     synchronize: process.env.NODE_ENV !== 'production',
+    // La mayoría de Postgres gestionados (Render, Railway, Supabase, RDS) exigen
+    // TLS y usan certificados que no están en la cadena de confianza por defecto
+    // de Node, de ahí rejectUnauthorized:false — sin esto la conexión falla o,
+    // según el proveedor, cae de vuelta a texto plano. DB_SSL=false permite
+    // desactivarlo explícitamente para Postgres local sin TLS.
+    ssl: process.env.DB_SSL === 'false'
+        ? false
+        : (process.env.DB_SSL === 'true' || process.env.NODE_ENV === 'production')
+            ? { rejectUnauthorized: false }
+            : false,
     // Aplica automáticamente cualquier migración pendiente al arrancar el
     // servidor (AppDataSource.initialize()), antes de aceptar requests — así
     // no depende de que alguien recuerde correr `migration:run` a mano antes

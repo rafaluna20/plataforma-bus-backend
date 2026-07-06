@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { CompanyService } from '../../application/services/CompanyService';
 import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { authorize } from '../middlewares/auth.middleware';
+import { AuditLogService } from '../../application/services/AuditLogService';
 
 const router = Router();
 const companyService = new CompanyService();
@@ -41,6 +42,17 @@ router.post('/', authorize(UserRole.SUPER_ADMIN), async (req: Request, res: Resp
         }
 
         const company = await companyService.create({ ruc, tradeName, legalName, commissionRate });
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CREATE_COMPANY',
+            entityName: 'CompanyEntity',
+            entityId: company.id,
+            newValue: { ruc: company.ruc, tradeName: company.tradeName, commissionRate: company.commissionRate },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
 
         return res.status(201).json({
             message: 'Empresa registrada exitosamente',
@@ -97,6 +109,18 @@ router.put('/:id', authorizeSelfCompany, async (req: Request, res: Response, nex
         }
 
         const company = await companyService.update(req.params.id as string, updates);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'UPDATE_COMPANY',
+            entityName: 'CompanyEntity',
+            entityId: req.params.id as string,
+            newValue: updates,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json({ message: 'Empresa actualizada', company });
     } catch (error: any) {
         if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });

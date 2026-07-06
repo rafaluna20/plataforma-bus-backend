@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PaymentService } from '../application/PaymentService';
 import { validateBody } from '../../../presentation/validators/schemas';
+import { AuditLogService } from '../../../application/services/AuditLogService';
 
 const router = Router();
 const paymentService = new PaymentService();
@@ -49,6 +50,17 @@ router.post('/card', validateBody(CardPaymentSchema), async (req: Request, res: 
             email,
         });
 
+        await AuditLogService.log({
+            userId,
+            userEmail: email,
+            action: 'PAYMENT_CARD_CHARGE',
+            entityName: 'BookingEntity',
+            entityId: result.booking.id,
+            newValue: { chargeId: result.chargeId, paymentStatus: result.booking.paymentStatus },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json({
             success: true,
             message: result.message,
@@ -82,6 +94,17 @@ router.post('/wallet', validateBody(WalletPaymentSchema), async (req: Request, r
         const userId = req.user!.sub;
 
         const result = await paymentService.processWalletPayment({ bookingId, userId });
+
+        await AuditLogService.log({
+            userId,
+            userEmail: req.user!.email,
+            action: 'PAYMENT_WALLET_CHARGE',
+            entityName: 'BookingEntity',
+            entityId: result.booking.id,
+            newValue: { paymentStatus: result.booking.paymentStatus, newBalance: result.newBalance },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
 
         return res.status(200).json({
             success: true,
@@ -120,6 +143,17 @@ router.post('/wallet/recharge', validateBody(WalletRechargeSchema), async (req: 
             amount,
             culqiToken,
             email,
+        });
+
+        await AuditLogService.log({
+            userId,
+            userEmail: email,
+            action: 'WALLET_RECHARGE',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { amount, chargeId: result.chargeId, newBalance: result.newBalance },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
         });
 
         return res.status(200).json({

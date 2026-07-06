@@ -1,5 +1,6 @@
 import { AppDataSource } from '../../infrastructure/database/data-source';
 import { AuditLogEntity } from '../../infrastructure/database/entities/AuditLogEntity';
+import { logger } from '../../infrastructure/logger';
 
 export class AuditLogService {
     private static get repo() {
@@ -41,7 +42,7 @@ export class AuditLogService {
             });
             await this.repo.save(audit);
         } catch (error) {
-            console.error('Error saving audit log:', error);
+            logger.error('Error guardando registro de auditoría', { error, action, entityName, entityId });
         }
     }
 

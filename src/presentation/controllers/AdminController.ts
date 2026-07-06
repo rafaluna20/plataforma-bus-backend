@@ -45,6 +45,18 @@ const ListUsersQuerySchema = z.object({
 router.post('/users/admin', validateBody(CreateStaffSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const user = await adminService.createAdmin(req.body);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CREATE_ADMIN_USER',
+            entityName: 'UserEntity',
+            entityId: user.id,
+            newValue: { email: user.email, companyId: req.body.companyId },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(201).json({
             message: 'Usuario ADMIN creado exitosamente',
             user,
@@ -69,6 +81,18 @@ router.post('/users/driver', validateBody(CreateStaffSchema), async (req: Reques
         }
 
         const user = await adminService.createDriver(req.body);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CREATE_DRIVER_USER',
+            entityName: 'UserEntity',
+            entityId: user.id,
+            newValue: { email: user.email, companyId: req.body.companyId },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(201).json({
             message: 'Usuario DRIVER creado exitosamente',
             user,
@@ -93,6 +117,18 @@ router.post('/users/seller', validateBody(CreateStaffSchema), async (req: Reques
         }
 
         const user = await adminService.createSeller(req.body);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CREATE_SELLER_USER',
+            entityName: 'UserEntity',
+            entityId: user.id,
+            newValue: { email: user.email, companyId: req.body.companyId, stationId: req.body.stationId },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(201).json({
             message: 'Usuario SELLER creado exitosamente',
             user,
@@ -117,6 +153,18 @@ router.patch('/users/:id/role', validateBody(UpdateRoleSchema), async (req: Requ
             role: req.body.role,
             companyId: req.body.companyId,
         });
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'UPDATE_USER_ROLE',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { role: req.body.role, companyId: req.body.companyId },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json({
             message: `Rol actualizado a ${req.body.role}`,
             user,
@@ -142,6 +190,18 @@ router.patch('/users/:id/status', async (req: Request, res: Response, next: Next
 
         const userId = req.params.id as string;
         const result = await adminService.toggleUserStatus(userId, isActive);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'TOGGLE_USER_STATUS',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { isActive },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
@@ -159,6 +219,18 @@ router.patch('/users/:id/activate', async (req: Request, res: Response, next: Ne
     try {
         const userId = req.params.id as string;
         const result = await adminService.toggleUserStatus(userId, true);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'TOGGLE_USER_STATUS',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { isActive: true },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
@@ -176,6 +248,18 @@ router.patch('/users/:id/deactivate', async (req: Request, res: Response, next: 
     try {
         const userId = req.params.id as string;
         const result = await adminService.toggleUserStatus(userId, false);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'TOGGLE_USER_STATUS',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { isActive: false },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
@@ -198,6 +282,18 @@ router.patch('/users/:id/toggle', async (req: Request, res: Response, next: Next
             return res.status(400).json({ error: 'Campo requerido: isActive (boolean)' });
         }
         const result = await adminService.toggleUserStatus(userId, isActive);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'TOGGLE_USER_STATUS',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: { isActive },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
         return res.status(200).json(result);
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
