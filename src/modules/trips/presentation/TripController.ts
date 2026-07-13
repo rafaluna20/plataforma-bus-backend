@@ -91,14 +91,21 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
             PaymentStatus.PAID_DIGITAL,
             PaymentStatus.PAID,
         ];
+        // OJO: .select() de TypeORM necesita los nombres de PROPIEDAD de la
+        // entidad (camelCase: 'b.seatId'), no el nombre de columna de la BD
+        // ('b.seat_id') -- y SIEMPRE debe incluir la clave primaria ('b.id'),
+        // o getMany() no puede hidratar las entidades y devuelve [] en
+        // silencio (sin lanzar error), aunque la fila exista en la BD. Este
+        // bug hacía que occupiedSeats devolviera siempre vacío sin importar
+        // cuántos asientos estuvieran realmente vendidos.
         const bookings = await bookingRepo
             .createQueryBuilder('b')
-            .select(['b.seat_id', 'b.payment_status'])
+            .select(['b.id', 'b.seatId'])
             .where('b.trip_id = :tripId', { tripId })
             .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
             .getMany();
 
-        const occupiedSeats = bookings.map((b: any) => b.seatId);
+        const occupiedSeats = bookings.map((b) => b.seatId);
 
         return res.status(200).json({ trip, occupiedSeats });
     } catch (error) {

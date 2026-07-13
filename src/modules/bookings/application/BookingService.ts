@@ -257,11 +257,20 @@ export class BookingService {
     }
 
     /**
-     * Cancelar una reserva (solo si está PENDING_CASH o PENDING_DIGITAL).
+     * Cancelar una reserva y liberar su asiento (permitido en cualquier estado
+     * activo: PENDING_CASH, PENDING_DIGITAL, PAID_DIGITAL o PAID -- no solo
+     * las pendientes de pago, ya que el caso de uso principal es "el pasajero
+     * ya pagó pero ya no viaja"). No permitido si ya está CANCELLED, FAILED o
+     * REFUNDED (estados terminales).
      * Permitido para: (a) el usuario dueño de la reserva, o (b) staff
      * (ADMIN/SUPER_ADMIN/AGENCY_SELLER/DRIVER) de la MISMA empresa del viaje.
      * Antes, `userId` se recibía pero nunca se verificaba — cualquier usuario
      * autenticado podía cancelar cualquier reserva de cualquier empresa.
+     *
+     * Nota: esto NO procesa ningún reembolso -- solo libera el asiento a nivel
+     * de inventario. Si el pasajero ya pagó, el reembolso (si aplica) se
+     * gestiona manualmente por fuera del sistema hasta que haya una pasarela
+     * de pago real integrada.
      */
     public async cancelBooking(
         bookingId: string,
@@ -287,7 +296,12 @@ export class BookingService {
             throw new Error('No tienes permisos para cancelar esta reserva');
         }
 
-        const cancellableStatuses = [PaymentStatus.PENDING_CASH, PaymentStatus.PENDING_DIGITAL];
+        const cancellableStatuses = [
+            PaymentStatus.PENDING_CASH,
+            PaymentStatus.PENDING_DIGITAL,
+            PaymentStatus.PAID_DIGITAL,
+            PaymentStatus.PAID,
+        ];
         if (!cancellableStatuses.includes(booking.paymentStatus)) {
             throw new Error(`No se puede cancelar una reserva con estado: ${booking.paymentStatus}`);
         }

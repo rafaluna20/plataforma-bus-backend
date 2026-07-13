@@ -298,17 +298,48 @@ describe('BookingService', () => {
             expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
         });
 
-        it('no debe cancelar una reserva ya PAID_DIGITAL (aunque sea el dueño)', async () => {
-            mockBookingRepo.findOne.mockResolvedValue({
+        it('debe permitir cancelar una reserva ya PAID_DIGITAL (el pasajero pagó pero ya no viaja)', async () => {
+            const booking = {
                 id: 'b1',
                 paymentStatus: PaymentStatus.PAID_DIGITAL,
                 user: { id: 'owner-1' },
                 trip: mockTrip,
-            });
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
 
-            await expect(bookingService.cancelBooking('b1', 'owner-1'))
-                .rejects.toThrow('No se puede cancelar');
+            const result = await bookingService.cancelBooking('b1', 'owner-1');
+            expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
         });
+
+        it('debe permitir cancelar una reserva ya PAID', async () => {
+            const booking = {
+                id: 'b1',
+                paymentStatus: PaymentStatus.PAID,
+                user: { id: 'owner-1' },
+                trip: mockTrip,
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
+
+            const result = await bookingService.cancelBooking('b1', 'owner-1');
+            expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
+        });
+
+        it.each([PaymentStatus.CANCELLED, PaymentStatus.FAILED, PaymentStatus.REFUNDED])(
+            'no debe volver a cancelar una reserva ya %s (estado terminal)',
+            async (status) => {
+                mockBookingRepo.findOne.mockResolvedValue({
+                    id: 'b1',
+                    paymentStatus: status,
+                    user: { id: 'owner-1' },
+                    trip: mockTrip,
+                });
+
+                await expect(bookingService.cancelBooking('b1', 'owner-1'))
+                    .rejects.toThrow('No se puede cancelar');
+            }
+        );
 
         it('debe lanzar error si la reserva no existe', async () => {
             mockBookingRepo.findOne.mockResolvedValue(null);
