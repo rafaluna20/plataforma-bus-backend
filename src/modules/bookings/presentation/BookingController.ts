@@ -30,6 +30,9 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
             startWaypointId,
             endWaypointId,
             seatId,
+            passengerAge,
+            passengerPhone,
+            observations,
         } = req.body;
 
         // Pasar el userId del usuario autenticado para trazabilidad
@@ -41,6 +44,9 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
             startWaypointId,
             endWaypointId,
             seatId,
+            passengerAge,
+            passengerPhone,
+            observations,
             userId: req.user?.sub,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
@@ -64,6 +70,7 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
                 seatId: booking.seatId,
                 totalPrice: booking.totalPrice,
                 paymentStatus: booking.paymentStatus,
+                ticketNumber: booking.ticketNumber,
                 createdAt: booking.createdAt,
             },
         });
@@ -96,6 +103,9 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
             startWaypointId,
             endWaypointId,
             seatId,
+            passengerAge,
+            passengerPhone,
+            observations,
             paymentDetails, // { method, token, phoneNumber }
         } = req.body;
 
@@ -108,6 +118,9 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
                 startWaypointId,
                 endWaypointId,
                 seatId,
+                passengerAge,
+                passengerPhone: passengerPhone || paymentDetails?.phoneNumber,
+                observations,
                 userId: req.user?.sub,
                 actorRole: req.user?.role,
                 actorCompanyId: req.user?.companyId,
@@ -136,6 +149,7 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
                 paymentStatus: booking.paymentStatus,
                 paymentMethod: booking.paymentMethod,
                 transactionRef: booking.paymentGatewayRef,
+                ticketNumber: booking.ticketNumber,
                 createdAt: booking.createdAt,
             },
         });
@@ -178,6 +192,9 @@ router.post(
             startWaypointId,
             endWaypointId,
             seatId,
+            passengerAge,
+            passengerPhone,
+            observations,
         } = req.body;
 
         const booking = await bookingService.reserveSeat({
@@ -188,6 +205,9 @@ router.post(
             startWaypointId,
             endWaypointId,
             seatId,
+            passengerAge,
+            passengerPhone,
+            observations,
             userId: req.user?.sub,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
@@ -211,6 +231,7 @@ router.post(
                 seatId: booking.seatId,
                 totalPrice: booking.totalPrice,
                 paymentStatus: booking.paymentStatus,
+                ticketNumber: booking.ticketNumber,
                 createdAt: booking.createdAt,
             },
         });

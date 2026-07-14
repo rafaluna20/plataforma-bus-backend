@@ -43,6 +43,20 @@ export class VehicleEntity {
     @Column({ name: 'is_active', type: 'boolean', default: true })
     isActive: boolean;
 
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+
+    /** Marca del vehículo (ej. "SCANIA", "MERCEDES BENZ") */
+    @Column({ type: 'varchar', length: 60, nullable: true })
+    brand: string | null;
+
+    /** Tarjeta Única de Circulación (TUC) */
+    @Column({ name: 'circulation_card', type: 'varchar', length: 30, nullable: true })
+    circulationCard: string | null;
+
+    /** N° de póliza de seguro (SOAT/AFOCAT) vigente */
+    @Column({ name: 'insurance_policy', type: 'varchar', length: 30, nullable: true })
+    insurancePolicy: string | null;
+
     @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
     createdAt: Date;
 

@@ -72,6 +72,40 @@ export class CompanyEntity {
     @Column({ name: 'contact_email', type: 'varchar', length: 150, nullable: true })
     contactEmail: string | null;
 
+    // ─── Manifiesto de Pasajeros (SUNAT/MTC) ──────────────────────────────────
+
+    /**
+     * Sedes/oficinas de la empresa para el encabezado del manifiesto impreso
+     * (ej. terminal de origen, oficina de destino). Cada una: { city, address,
+     * phone }. Puramente informativo/impresión, no afecta lógica de negocio.
+     */
+    @Column({ name: 'office_branches', type: 'jsonb', nullable: true })
+    officeBranches: { city: string; address: string; phone: string }[] | null;
+
+    /** Domicilio fiscal (distinto de la dirección operativa/sede) */
+    @Column({ name: 'fiscal_address', type: 'text', nullable: true })
+    fiscalAddress: string | null;
+
+    /** N° de autorización SUNAT para impresión de manifiestos (fijo, no cambia por manifiesto) */
+    @Column({ name: 'sunat_print_authorization', type: 'varchar', length: 30, nullable: true })
+    sunatPrintAuthorization: string | null;
+
+    /**
+     * Serie del correlativo de manifiestos (ej. "001"). El número (correlativo)
+     * en sí se lleva en manifest_next_number y se congela por viaje la primera
+     * vez que se imprime (ver TripEntity.manifestNumber).
+     */
+    @Column({ name: 'manifest_series', type: 'varchar', length: 10, nullable: true, default: '001' })
+    manifestSeries: string | null;
+
+    /** Próximo correlativo de manifiesto a asignar (se incrementa al imprimir por primera vez) */
+    @Column({ name: 'manifest_next_number', type: 'int', default: 1 })
+    manifestNextNumber: number;
+
+    /** Próximo correlativo de boleto a asignar (se incrementa en cada venta/reserva) */
+    @Column({ name: 'ticket_next_number', type: 'int', default: 1 })
+    ticketNextNumber: number;
+
     @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
     createdAt: Date;
 

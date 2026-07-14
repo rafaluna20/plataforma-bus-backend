@@ -38,6 +38,23 @@ export class BookingEntity {
     @Column({ name: 'passenger_doc_num', type: 'varchar', length: 20 })
     passengerDocNum: string;
 
+    // ─── Datos adicionales para el Manifiesto de Pasajeros (SUNAT/MTC) ────────
+
+    @Column({ name: 'passenger_age', type: 'int', nullable: true })
+    passengerAge: number | null;
+
+    /** Celular del pasajero, persistido (antes solo se usaba transitoriamente para el pago Yape) */
+    @Column({ name: 'passenger_phone', type: 'varchar', length: 20, nullable: true })
+    passengerPhone: string | null;
+
+    /** N° de boleto correlativo de la empresa (ej. "T-000123"), asignado al crear la reserva */
+    @Column({ name: 'ticket_number', type: 'varchar', length: 20, nullable: true })
+    ticketNumber: string | null;
+
+    /** Observaciones libres para el manifiesto (ej. "SUBE EN VIRGEN", "MENOR - MADRE EN ASIENTO 12") */
+    @Column({ type: 'varchar', length: 200, nullable: true })
+    observations: string | null;
+
     @ManyToOne(() => RouteWaypointEntity)
     @JoinColumn({ name: 'start_waypoint_id' })
     startWaypoint: RouteWaypointEntity;

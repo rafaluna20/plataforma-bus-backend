@@ -77,11 +77,13 @@ router.patch('/me', authenticate, authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN
         if (!companyId) return res.status(400).json({ error: 'No tienes empresa asignada' });
 
         const { slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-                phone, address, city, website, description, contactEmail, sliderImages } = req.body;
+                phone, address, city, website, description, contactEmail, sliderImages,
+                fiscalAddress, officeBranches, sunatPrintAuthorization, manifestSeries } = req.body;
 
         const updated = await brandingService.updateBranding({
             companyId, slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
             phone, address, city, website, description, contactEmail, sliderImages,
+            fiscalAddress, officeBranches, sunatPrintAuthorization, manifestSeries,
         });
 
         return res.status(200).json({ message: 'Branding actualizado exitosamente', company: updated });
@@ -99,11 +101,13 @@ router.patch('/:companyId', authenticate, authorize(UserRole.SUPER_ADMIN), valid
     try {
         const companyId = Array.isArray(req.params.companyId) ? req.params.companyId[0] : req.params.companyId;
         const { slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
-                phone, address, city, website, description, contactEmail, sliderImages } = req.body;
+                phone, address, city, website, description, contactEmail, sliderImages,
+                fiscalAddress, officeBranches, sunatPrintAuthorization, manifestSeries } = req.body;
 
         const updated = await brandingService.updateBranding({
             companyId, slug, logoUrl, primaryColor, secondaryColor, bannerUrl,
             phone, address, city, website, description, contactEmail, sliderImages,
+            fiscalAddress, officeBranches, sunatPrintAuthorization, manifestSeries,
         });
 
         return res.status(200).json({ message: 'Branding actualizado exitosamente', company: updated });

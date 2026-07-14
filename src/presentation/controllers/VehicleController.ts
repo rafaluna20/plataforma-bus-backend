@@ -18,10 +18,12 @@ const resolveVehicleCompanyId = async (req: Request) => {
  */
 router.post('/', authorizeCompany, validateBody(CreateVehicleSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl } = req.body;
+        const { companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl,
+                brand, circulationCard, insurancePolicy } = req.body;
 
         const vehicle = await vehicleService.create({
             companyId, plateNumber, vehicleType, serviceMode, seatTemplate, capacity, imageUrl,
+            brand, circulationCard, insurancePolicy,
         });
 
         await AuditLogService.log({

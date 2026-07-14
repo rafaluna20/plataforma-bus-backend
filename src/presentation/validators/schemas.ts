@@ -79,6 +79,10 @@ export const CreateBookingSchema = z.object({
         .min(1, 'El asiento es requerido')
         .max(10, 'El ID de asiento no puede superar 10 caracteres')
         .regex(/^[A-Z0-9]+$/i, 'Formato de asiento inválido'),
+    // ─── Opcionales, solo para el Manifiesto de Pasajeros (SUNAT/MTC) ─────────
+    passengerAge: z.number().int().min(0).max(120).optional(),
+    passengerPhone: z.string().max(20).optional(),
+    observations: z.string().max(200).optional(),
 }).refine(
     (data) => data.startWaypointId !== data.endWaypointId,
     { message: 'El origen y el destino no pueden ser el mismo punto', path: ['endWaypointId'] }
@@ -125,6 +129,15 @@ export const CreateTripSchema = z.object({
             (date) => date > new Date(),
             { message: 'La fecha de salida debe ser en el futuro' }
         ),
+    // OJO: faltaba aquí -- Zod descarta en silencio cualquier campo no
+    // declarado en el schema (validateBody reemplaza req.body con el
+    // resultado parseado), así que el conductor asignado al CREAR un viaje
+    // nunca llegaba al servicio pese a que el DTO/controller sí lo esperaban.
+    driverId: z.string().uuid('driverId debe ser un UUID válido').optional(),
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    copilotName: z.string().max(150).optional(),
+    copilotLicense: z.string().max(30).optional(),
+    auxiliarName: z.string().max(150).optional(),
 });
 
 export const UpdateTripSchema = z.object({
@@ -135,9 +148,13 @@ export const UpdateTripSchema = z.object({
     vehicleId: z.string().uuid('vehicleId debe ser un UUID válido').optional(),
     // undefined = no tocar; '' o null = quitar conductor; uuid = asignar
     driverId: z.union([z.string().uuid('driverId debe ser un UUID válido'), z.literal(''), z.null()]).optional(),
+    copilotName: z.string().max(150).optional().nullable(),
+    copilotLicense: z.string().max(30).optional().nullable(),
+    auxiliarName: z.string().max(150).optional().nullable(),
 }).refine(
-    (data) => data.departureTime !== undefined || data.vehicleId !== undefined || data.driverId !== undefined,
-    { message: 'Debe proveer al menos uno de: departureTime, vehicleId, driverId' }
+    (data) => data.departureTime !== undefined || data.vehicleId !== undefined || data.driverId !== undefined
+        || data.copilotName !== undefined || data.copilotLicense !== undefined || data.auxiliarName !== undefined,
+    { message: 'Debe proveer al menos uno de: departureTime, vehicleId, driverId, copilotName, copilotLicense, auxiliarName' }
 );
 
 export const UpdateTripStatusSchema = z.object({
@@ -212,6 +229,15 @@ export const UpdateBrandingSchema = z.object({
     description: z.string().max(1000).optional(),
     contactEmail: z.string().email('Formato de correo inválido').optional(),
     sliderImages: z.array(z.string().url('Cada imagen del slider debe ser una URL válida')).optional(),
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    fiscalAddress: z.string().max(300).optional(),
+    officeBranches: z.array(z.object({
+        city: z.string().max(100),
+        address: z.string().max(300),
+        phone: z.string().max(20),
+    })).max(10).optional(),
+    sunatPrintAuthorization: z.string().max(30).optional(),
+    manifestSeries: z.string().max(10).optional(),
 });
 
 // ─── Vehicle Schemas ──────────────────────────────────────────────────────────
@@ -236,6 +262,10 @@ export const CreateVehicleSchema = z.object({
         .min(1, 'La capacidad mínima es 1')
         .max(100, 'La capacidad máxima es 100'),
     imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    brand: z.string().max(60).optional().nullable(),
+    circulationCard: z.string().max(30).optional().nullable(),
+    insurancePolicy: z.string().max(30).optional().nullable(),
 });
 
 export const UpdateVehicleSchema = z.object({
@@ -251,6 +281,9 @@ export const UpdateVehicleSchema = z.object({
     capacity: z.number().int().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
     imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+    brand: z.string().max(60).optional().nullable(),
+    circulationCard: z.string().max(30).optional().nullable(),
+    insurancePolicy: z.string().max(30).optional().nullable(),
 });
 
 // ─── Route / Station Schemas ──────────────────────────────────────────────────

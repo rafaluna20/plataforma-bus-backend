@@ -35,6 +35,10 @@ export class UserEntity {
     @Column({ name: 'phone', type: 'varchar', length: 20, nullable: true })
     phone: string;
 
+    /** N° de licencia de conducir (solo relevante para role=DRIVER, para el Manifiesto de Pasajeros) */
+    @Column({ name: 'license_number', type: 'varchar', length: 30, nullable: true })
+    licenseNumber: string | null;
+
     @Column({ name: 'balance', type: 'decimal', precision: 10, scale: 2, default: 0.00 })
     balance: number;
 

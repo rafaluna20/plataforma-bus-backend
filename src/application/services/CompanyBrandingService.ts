@@ -16,6 +16,11 @@ export interface UpdateBrandingDTO {
     description?: string;
     contactEmail?: string;
     sliderImages?: string[];
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    fiscalAddress?: string;
+    officeBranches?: { city: string; address: string; phone: string }[];
+    sunatPrintAuthorization?: string;
+    manifestSeries?: string;
 }
 
 export class CompanyBrandingService {
@@ -95,6 +100,10 @@ export class CompanyBrandingService {
         if (data.description !== undefined) company.description = data.description;
         if (data.contactEmail !== undefined) company.contactEmail = data.contactEmail;
         if (data.sliderImages !== undefined) company.sliderImages = data.sliderImages;
+        if (data.fiscalAddress !== undefined) company.fiscalAddress = data.fiscalAddress;
+        if (data.officeBranches !== undefined) company.officeBranches = data.officeBranches;
+        if (data.sunatPrintAuthorization !== undefined) company.sunatPrintAuthorization = data.sunatPrintAuthorization;
+        if (data.manifestSeries !== undefined) company.manifestSeries = data.manifestSeries;
 
         const saved = await this.repo.save(company);
         logger.info(`Branding actualizado: empresa ${company.tradeName} (${company.id})`);

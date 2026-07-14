@@ -16,6 +16,7 @@ export interface CreateAdminDTO {
     docNum?: string;
     phone?: string;
     stationId?: string; // Solo para vendedores
+    licenseNumber?: string; // Solo relevante para conductores (Manifiesto de Pasajeros)
 }
 
 export interface UpdateUserRoleDTO {
@@ -115,6 +116,7 @@ export class AdminService {
             docType: data.docType,
             docNum: data.docNum,
             phone: data.phone,
+            licenseNumber: data.licenseNumber || null,
             balance: 0,
             isActive: true,
         });

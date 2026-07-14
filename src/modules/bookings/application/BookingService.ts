@@ -20,6 +20,10 @@ export interface CreateBookingDTO {
     userId?: string; // ID del usuario autenticado (opcional para reservas en mostrador)
     actorRole?: UserRole; // Rol de quien crea la reserva (staff queda confinado a su empresa; PASSENGER no)
     actorCompanyId?: string;
+    // ─── Opcionales, solo para el Manifiesto de Pasajeros (SUNAT/MTC) ─────────
+    passengerAge?: number;
+    passengerPhone?: string;
+    observations?: string;
 }
 
 export class BookingService {
@@ -112,6 +116,24 @@ export class BookingService {
     }
 
     /**
+     * Asigna el próximo N° de boleto correlativo de la empresa (ej. "T-000123")
+     * de forma atómica -- un solo UPDATE...RETURNING dentro de la misma
+     * transacción de la reserva, para que dos ventas concurrentes nunca
+     * obtengan el mismo número (el UPDATE toma el lock de fila de Postgres).
+     */
+    private async assignTicketNumber(
+        companyId: string,
+        manager: typeof AppDataSource.manager,
+    ): Promise<string> {
+        const result = await manager.query(
+            `UPDATE companies SET ticket_next_number = ticket_next_number + 1 WHERE id = $1 RETURNING ticket_next_number`,
+            [companyId]
+        );
+        const next = result[0]?.ticket_next_number ?? 1;
+        return `T-${String(next).padStart(6, '0')}`;
+    }
+
+    /**
      * Crea una reserva al contado validando estrictamente el overbooking por tramos.
      * Nivel de aislamiento SERIALIZABLE para prevenir condiciones de carrera.
      */
@@ -133,11 +155,17 @@ export class BookingService {
                 [PaymentStatus.CANCELLED, PaymentStatus.REFUNDED, PaymentStatus.FAILED]
             );
 
+            const ticketNumber = await this.assignTicketNumber(trip.route.company.id, queryRunner.manager);
+
             const newBooking = bookingRepo.create({
                 trip,
                 passengerName: data.passengerName,
                 passengerDocType: data.passengerDocType,
                 passengerDocNum: data.passengerDocNum,
+                passengerAge: data.passengerAge,
+                passengerPhone: data.passengerPhone,
+                observations: data.observations,
+                ticketNumber,
                 startWaypoint,
                 endWaypoint,
                 seatId: data.seatId,
@@ -186,12 +214,18 @@ export class BookingService {
                 [PaymentStatus.CANCELLED, PaymentStatus.REFUNDED, PaymentStatus.FAILED]
             );
 
+            const ticketNumber = await this.assignTicketNumber(trip.route.company.id, queryRunner.manager);
+
             // 1. Guardar la reserva como PENDING_DIGITAL (bloquea el asiento en la BD)
             const newBooking = bookingRepo.create({
                 trip,
                 passengerName: data.passengerName,
                 passengerDocType: data.passengerDocType,
                 passengerDocNum: data.passengerDocNum,
+                passengerAge: data.passengerAge,
+                passengerPhone: data.passengerPhone,
+                observations: data.observations,
+                ticketNumber,
                 startWaypoint,
                 endWaypoint,
                 seatId: data.seatId,
@@ -255,11 +289,17 @@ export class BookingService {
                 [PaymentStatus.CANCELLED, PaymentStatus.REFUNDED, PaymentStatus.FAILED]
             );
 
+            const ticketNumber = await this.assignTicketNumber(trip.route.company.id, queryRunner.manager);
+
             const newBooking = bookingRepo.create({
                 trip,
                 passengerName: data.passengerName,
                 passengerDocType: data.passengerDocType,
                 passengerDocNum: data.passengerDocNum,
+                passengerAge: data.passengerAge,
+                passengerPhone: data.passengerPhone,
+                observations: data.observations,
+                ticketNumber,
                 startWaypoint,
                 endWaypoint,
                 seatId: data.seatId,

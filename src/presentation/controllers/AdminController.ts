@@ -21,6 +21,8 @@ const CreateStaffSchema = z.object({
     docType: z.enum(['DNI', 'CE', 'PASAPORTE', 'RUC']).optional(),
     docNum: z.string().min(6).max(20).optional(),
     phone: z.string().regex(/^[0-9+\-\s()]{7,20}$/).optional(),
+    // Solo relevante para conductores (Manifiesto de Pasajeros SUNAT/MTC)
+    licenseNumber: z.string().max(30).optional(),
 });
 
 const UpdateRoleSchema = z.object({

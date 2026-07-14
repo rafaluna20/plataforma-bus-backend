@@ -45,6 +45,8 @@ const mockQueryRunner = {
             if (name === 'RouteWaypointEntity') return mockWaypointRepo;
             return mockBookingRepo;
         }),
+        // Usado por assignTicketNumber() (UPDATE companies ... RETURNING ticket_next_number)
+        query: jest.fn().mockResolvedValue([{ ticket_next_number: 1 }]),
     },
 };
 

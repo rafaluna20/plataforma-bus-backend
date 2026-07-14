@@ -182,6 +182,10 @@ router.get(
                 seatId: b.seatId,
                 name: b.passengerName,
                 document: `${b.passengerDocType} ${b.passengerDocNum}`,
+                age: b.passengerAge,
+                phone: b.passengerPhone,
+                ticketNumber: b.ticketNumber,
+                observations: b.observations,
                 origin: (b.startWaypoint as any)?.station?.name || 'Origen',
                 destination: (b.endWaypoint as any)?.station?.name || 'Destino',
                 paymentStatus: b.paymentStatus,
@@ -194,6 +198,135 @@ router.get(
                     email: b.user.email,
                     role:  b.user.role,
                 } : null,
+            })),
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * GET /api/v1/trips/:tripId/manifest-print
+ * Datos completos para imprimir el Manifiesto de Pasajeros en el formato
+ * exigido por SUNAT/MTC: empresa (sedes, RUC, autorización de impresión),
+ * vehículo (marca, TUC, póliza), conductor/copiloto/auxiliar, y la lista de
+ * pasajeros con edad/celular/N° de boleto/observaciones.
+ *
+ * Asigna el N° de manifiesto del viaje la PRIMERA vez que se llama a este
+ * endpoint (queda congelado para reimpresiones futuras).
+ *
+ * Restringido a DRIVER/AGENCY_SELLER/ADMIN de la empresa dueña del viaje, o SUPER_ADMIN.
+ */
+router.get(
+    '/:tripId/manifest-print',
+    authenticate,
+    authorize(UserRole.DRIVER, UserRole.AGENCY_SELLER, UserRole.ADMIN, UserRole.SUPER_ADMIN),
+    async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { tripId } = req.params as { tripId: string };
+
+        const tripRepo = AppDataSource.getRepository(TripEntity);
+        const trip = await tripRepo
+            .createQueryBuilder('trip')
+            .innerJoinAndSelect('trip.route', 'route')
+            .innerJoinAndSelect('route.company', 'company')
+            .innerJoinAndSelect('route.waypoints', 'waypoints')
+            .innerJoinAndSelect('waypoints.station', 'station')
+            .innerJoinAndSelect('trip.vehicle', 'vehicle')
+            .leftJoinAndSelect('trip.driver', 'driver')
+            .where('trip.id = :tripId', { tripId })
+            .getOne();
+
+        if (!trip) return res.status(404).json({ error: 'Viaje no encontrado' });
+
+        if (req.user!.role !== UserRole.SUPER_ADMIN && trip.route.company.id !== req.user!.companyId) {
+            return res.status(403).json({ error: 'No tienes permisos para ver el manifiesto de este viaje.' });
+        }
+
+        // Asignar el N° de manifiesto la primera vez (queda congelado en reimpresiones).
+        // El WHERE manifest_number IS NULL evita pisar un número ya asignado si
+        // dos impresiones llegan casi al mismo tiempo.
+        if (!trip.manifestNumber) {
+            const result = await AppDataSource.query(
+                `UPDATE companies SET manifest_next_number = manifest_next_number + 1 WHERE id = $1 RETURNING manifest_next_number, manifest_series`,
+                [trip.route.company.id]
+            );
+            const series = result[0]?.manifest_series || '001';
+            const next = result[0]?.manifest_next_number || 1;
+            const manifestNumber = `${series}-${String(next).padStart(6, '0')}`;
+            await AppDataSource.query(
+                `UPDATE trips SET manifest_number = $1 WHERE id = $2 AND manifest_number IS NULL`,
+                [manifestNumber, tripId]
+            );
+            trip.manifestNumber = manifestNumber;
+        }
+
+        trip.route.waypoints.sort((a: any, b: any) => a.stopOrder - b.stopOrder);
+
+        const bookingRepo = AppDataSource.getRepository(BookingEntity);
+        const activeStatuses = [
+            PaymentStatus.RESERVED,
+            PaymentStatus.PENDING_CASH,
+            PaymentStatus.PAID_DIGITAL,
+            PaymentStatus.PAID,
+        ];
+        const bookings = await bookingRepo
+            .createQueryBuilder('b')
+            .leftJoinAndSelect('b.startWaypoint', 'sw')
+            .leftJoinAndSelect('sw.station', 'ss')
+            .leftJoinAndSelect('b.endWaypoint', 'ew')
+            .leftJoinAndSelect('ew.station', 'es')
+            .where('b.trip_id = :tripId', { tripId })
+            .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
+            .orderBy('b.seatId', 'ASC')
+            .getMany();
+
+        const company = trip.route.company;
+        const waypoints = trip.route.waypoints;
+
+        return res.status(200).json({
+            company: {
+                ruc: company.ruc,
+                tradeName: company.tradeName,
+                legalName: company.legalName,
+                logoUrl: company.logoUrl,
+                phone: company.phone,
+                fiscalAddress: company.fiscalAddress,
+                officeBranches: company.officeBranches || [],
+                contactEmail: company.contactEmail,
+                sunatPrintAuthorization: company.sunatPrintAuthorization,
+            },
+            vehicle: {
+                plateNumber: trip.vehicle.plateNumber,
+                brand: trip.vehicle.brand,
+                vehicleType: trip.vehicle.vehicleType,
+                circulationCard: trip.vehicle.circulationCard,
+                insurancePolicy: trip.vehicle.insurancePolicy,
+                capacity: trip.vehicle.capacity,
+            },
+            trip: {
+                id: trip.id,
+                departureTime: trip.departureTime,
+                manifestNumber: trip.manifestNumber,
+                origin: waypoints[0]?.station?.name || '',
+                destination: waypoints[waypoints.length - 1]?.station?.name || '',
+                driver: trip.driver ? { name: trip.driver.name, licenseNumber: trip.driver.licenseNumber } : null,
+                copilotName: trip.copilotName,
+                copilotLicense: trip.copilotLicense,
+                auxiliarName: trip.auxiliarName,
+            },
+            passengers: bookings.map(b => ({
+                id: b.id,
+                seatId: b.seatId,
+                name: b.passengerName,
+                document: `${b.passengerDocType} ${b.passengerDocNum}`,
+                age: b.passengerAge,
+                phone: b.passengerPhone,
+                ticketNumber: b.ticketNumber,
+                observations: b.observations,
+                destination: (b.endWaypoint as any)?.station?.name || 'Destino',
+                price: Number(b.totalPrice),
+                paymentStatus: b.paymentStatus,
             })),
         });
     } catch (error) {

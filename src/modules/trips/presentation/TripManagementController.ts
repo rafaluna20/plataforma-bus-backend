@@ -14,13 +14,16 @@ const tripMgmtService = new TripManagementService();
  */
 router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), validateBody(CreateTripSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { routeId, vehicleId, departureTime, driverId } = req.body;
+        const { routeId, vehicleId, departureTime, driverId, copilotName, copilotLicense, auxiliarName } = req.body;
 
         const trip = await tripMgmtService.create({
             routeId,
             vehicleId,
             departureTime: new Date(departureTime),
             driverId: driverId || undefined,
+            copilotName,
+            copilotLicense,
+            auxiliarName,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
         });
@@ -46,13 +49,16 @@ router.post('/', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER
  */
 router.patch('/:id', authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER), validateBody(UpdateTripSchema), async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { departureTime, vehicleId, driverId } = req.body;
+        const { departureTime, vehicleId, driverId, copilotName, copilotLicense, auxiliarName } = req.body;
         const tripId = req.params.id as string;
 
         const trip = await tripMgmtService.update(tripId, {
             departureTime: departureTime ? new Date(departureTime) : undefined,
             vehicleId,
             driverId, // undefined = no tocar; null o '' = quitar conductor; uuid = asignar
+            copilotName,
+            copilotLicense,
+            auxiliarName,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
             actorId: req.user?.sub,

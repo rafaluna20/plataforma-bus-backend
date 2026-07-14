@@ -15,6 +15,10 @@ export interface CreateTripDTO {
     driverId?: string; // Conductor asignado (opcional)
     actorRole?: UserRole;
     actorCompanyId?: string;
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    copilotName?: string;
+    copilotLicense?: string;
+    auxiliarName?: string;
 }
 
 export interface UpdateTripStatusDTO {
@@ -167,6 +171,9 @@ export class TripManagementService {
             driver,
             departureTime: departureDate,
             status: TripStatus.SCHEDULED,
+            copilotName: data.copilotName || null,
+            copilotLicense: data.copilotLicense || null,
+            auxiliarName: data.auxiliarName || null,
         });
 
         const saved = await this.tripRepo.save(trip);
@@ -180,7 +187,11 @@ export class TripManagementService {
      */
     public async update(
         tripId: string,
-        data: { departureTime?: Date; vehicleId?: string; driverId?: string | null; actorRole?: UserRole; actorCompanyId?: string; actorId?: string },
+        data: {
+            departureTime?: Date; vehicleId?: string; driverId?: string | null;
+            copilotName?: string | null; copilotLicense?: string | null; auxiliarName?: string | null;
+            actorRole?: UserRole; actorCompanyId?: string; actorId?: string
+        },
     ): Promise<TripEntity> {
         const trip = await this.tripRepo.findOne({
             where: { id: tripId },
@@ -262,6 +273,10 @@ export class TripManagementService {
                 );
             }
         }
+
+        if (data.copilotName !== undefined) trip.copilotName = data.copilotName;
+        if (data.copilotLicense !== undefined) trip.copilotLicense = data.copilotLicense;
+        if (data.auxiliarName !== undefined) trip.auxiliarName = data.auxiliarName;
 
         const saved = await this.tripRepo.save(trip);
         logger.info(`Viaje reprogramado: ${saved.id} | Nueva salida: ${saved.departureTime.toISOString()} | Vehículo: ${saved.vehicle.plateNumber} | Conductor: ${saved.driver?.name ?? 'sin asignar'}`);

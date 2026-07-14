@@ -10,6 +10,10 @@ export interface CreateVehicleDTO {
     seatTemplate: any; // JSON configurable de asientos
     capacity: number;
     imageUrl?: string;
+    // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
+    brand?: string;
+    circulationCard?: string;
+    insurancePolicy?: string;
 }
 
 export interface UpdateVehicleDTO {
@@ -20,6 +24,9 @@ export interface UpdateVehicleDTO {
     capacity?: number;
     isActive?: boolean;
     imageUrl?: string;
+    brand?: string;
+    circulationCard?: string;
+    insurancePolicy?: string;
 }
 
 // Plantillas de asientos predeterminadas por tipo de vehículo
@@ -117,6 +124,9 @@ export class VehicleService {
             seatTemplate,
             capacity: data.capacity,
             imageUrl: data.imageUrl || null,
+            brand: data.brand || null,
+            circulationCard: data.circulationCard || null,
+            insurancePolicy: data.insurancePolicy || null,
         });
 
         return this.repo.save(vehicle);
