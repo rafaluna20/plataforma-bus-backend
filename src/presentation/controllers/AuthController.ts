@@ -93,6 +93,32 @@ router.post('/login', authLimiter, validateBody(LoginSchema), async (req: Reques
 });
 
 /**
+ * POST /api/v1/auth/login/mobile
+ * Login para la app móvil de conductores.
+ * Devuelve accessToken y refreshToken en el body JSON (no en cookies httpOnly)
+ * para que React Native pueda guardarlos en AsyncStorage.
+ */
+router.post('/login/mobile', authLimiter, validateBody(LoginSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { email, password } = req.body;
+
+        const tokens = await authService.login({ email, password });
+
+        return res.status(200).json({
+            message: 'Sesión iniciada exitosamente',
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            user: tokens.user,
+        });
+    } catch (error: any) {
+        if (error.message?.includes('Credenciales') || error.message?.includes('desactivada')) {
+            return res.status(401).json({ error: error.message });
+        }
+        next(error);
+    }
+});
+
+/**
  * POST /api/v1/auth/refresh
  * Renovar access token usando refresh token (desde cookie o body)
  */
