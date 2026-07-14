@@ -287,6 +287,42 @@ export class AdminService {
     }
 
     /**
+     * Eliminar (soft delete) la cuenta de un usuario de staff. El registro
+     * queda marcado con deleted_at en vez de borrarse físicamente, para no
+     * romper el historial de viajes/reservas/encomiendas que lo referencian.
+     *
+     * SEGURIDAD: mismas reglas que updateUserProfile/toggleUserStatus — un
+     * ADMIN solo puede eliminar staff de su propia empresa, nunca a otro
+     * ADMIN ni a un SUPER_ADMIN.
+     */
+    public async deleteUser(
+        userId: string,
+        actorRole?: UserRole,
+        actorCompanyId?: string,
+    ): Promise<{ message: string }> {
+        const user = await this.userRepo.findOne({ where: { id: userId }, relations: { company: true } });
+        if (!user) throw new Error('Usuario no encontrado');
+
+        if (user.role === UserRole.SUPER_ADMIN) {
+            throw new Error('No se puede eliminar una cuenta SUPER_ADMIN');
+        }
+
+        if (actorRole !== UserRole.SUPER_ADMIN) {
+            if (user.role === UserRole.ADMIN) {
+                throw new Error('No tienes permisos para eliminar la cuenta de otro ADMIN');
+            }
+            if (!actorCompanyId || user.company?.id !== actorCompanyId) {
+                throw new Error('Solo puedes gestionar usuarios de tu propia empresa');
+            }
+        }
+
+        await this.userRepo.softRemove(user);
+        logger.info(`[Admin] Cuenta eliminada: ${user.email}`);
+
+        return { message: 'Cuenta eliminada exitosamente' };
+    }
+
+    /**
      * Activar o desactivar una cuenta de usuario.
      *
      * SEGURIDAD: un ADMIN solo puede activar/desactivar staff (DRIVER,

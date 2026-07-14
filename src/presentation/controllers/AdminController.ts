@@ -360,6 +360,36 @@ router.patch('/users/:id/toggle', async (req: Request, res: Response, next: Next
 });
 
 /**
+ * DELETE /api/v1/admin/users/:id
+ * Eliminar (soft delete) la cuenta de un usuario de staff.
+ * SUPER_ADMIN puede eliminar a cualquiera; ADMIN solo a staff de su propia empresa.
+ */
+router.delete('/users/:id', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.params.id as string;
+        const result = await adminService.deleteUser(userId, req.user?.role, req.user?.companyId);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'DELETE_USER',
+            entityName: 'UserEntity',
+            entityId: userId,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(200).json(result);
+    } catch (error: any) {
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('SUPER_ADMIN') || error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        next(error);
+    }
+});
+
+/**
  * GET /api/v1/admin/users
  * Listar todos los usuarios con paginación y filtros.
  * SUPER_ADMIN ve todos. ADMIN solo ve usuarios de su empresa.
