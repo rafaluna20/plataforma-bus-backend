@@ -1,11 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { BookingService } from '../application/BookingService';
-import { authenticate } from '../../../presentation/middlewares/auth.middleware';
+import { authenticate, authorize } from '../../../presentation/middlewares/auth.middleware';
 import { MockPaymentAdapter } from '../../payments/infrastructure/MockPaymentAdapter';
 import { AuditLogService } from '../../../application/services/AuditLogService';
-import { validateBody, CreateBookingSchema, CreateDigitalBookingSchema } from '../../../presentation/validators/schemas';
+import { validateBody, CreateBookingSchema, CreateDigitalBookingSchema, ConfirmReservationSchema } from '../../../presentation/validators/schemas';
 import { AppDataSource } from '../../../infrastructure/database/data-source';
-import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
+import { UserEntity, UserRole } from '../../../infrastructure/database/entities/UserEntity';
 import { BookingEntity } from '../domain/BookingEntity';
 import { ParcelEntity } from '../../parcels/domain/ParcelEntity';
 
@@ -148,6 +148,78 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
         }
         if (error.message?.includes('Pago rechazado')) {
             return res.status(402).json({ error: error.message });
+        }
+        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
+            return res.status(400).json({ error: error.message });
+        }
+        next(error);
+    }
+});
+
+/**
+ * POST /api/v1/bookings/reserve
+ * Aparta un asiento (nombre + documento del pasajero) SIN cobrar todavía.
+ * Se confirma después con PATCH /:id/confirm, o se libera con PATCH /:id/cancel.
+ * ✅ Solo staff de la empresa (ADMIN/SUPER_ADMIN/AGENCY_SELLER/DRIVER) -- un
+ * PASSENGER no puede apartar asientos sin pagar indefinidamente.
+ */
+router.post(
+    '/reserve',
+    authenticate,
+    authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER, UserRole.DRIVER),
+    validateBody(CreateBookingSchema),
+    async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const {
+            tripId,
+            passengerName,
+            passengerDocType,
+            passengerDocNum,
+            startWaypointId,
+            endWaypointId,
+            seatId,
+        } = req.body;
+
+        const booking = await bookingService.reserveSeat({
+            tripId,
+            passengerName,
+            passengerDocType,
+            passengerDocNum,
+            startWaypointId,
+            endWaypointId,
+            seatId,
+            userId: req.user?.sub,
+            actorRole: req.user?.role,
+            actorCompanyId: req.user?.companyId,
+        });
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'RESERVE_SEAT',
+            entityName: 'BookingEntity',
+            entityId: booking.id,
+            newValue: { tripId, passengerName, seatId, totalPrice: booking.totalPrice, paymentStatus: booking.paymentStatus },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(201).json({
+            message: 'Asiento reservado exitosamente',
+            booking: {
+                id: booking.id,
+                seatId: booking.seatId,
+                totalPrice: booking.totalPrice,
+                paymentStatus: booking.paymentStatus,
+                createdAt: booking.createdAt,
+            },
+        });
+    } catch (error: any) {
+        if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        if (error.message?.includes('ocupado')) {
+            return res.status(409).json({ error: error.message });
         }
         if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
             return res.status(400).json({ error: error.message });
@@ -302,6 +374,62 @@ router.get('/my', async (req: Request, res: Response, next: NextFunction) => {
         const result = await bookingService.getMyBookings(userId, page, limit);
         return res.status(200).json(result);
     } catch (error) {
+        next(error);
+    }
+});
+
+/**
+ * PATCH /api/v1/bookings/:id/confirm
+ * Confirma una reserva (RESERVED) hacia una venta real, en efectivo o digital.
+ * Body: { method: 'cash' | 'digital', paymentDetails? }
+ * ✅ Solo staff de la MISMA empresa del viaje (no necesariamente quien la creó).
+ */
+router.patch(
+    '/:id/confirm',
+    authenticate,
+    authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER, UserRole.DRIVER),
+    validateBody(ConfirmReservationSchema),
+    async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const id = req.params.id as string;
+        const { method, paymentDetails } = req.body;
+
+        const booking = await bookingService.confirmReservation(
+            id,
+            method,
+            req.user?.role,
+            req.user?.companyId,
+            method === 'digital' ? paymentAdapter : undefined,
+            method === 'digital' ? paymentDetails : undefined,
+        );
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'CONFIRM_RESERVATION',
+            entityName: 'BookingEntity',
+            entityId: id,
+            newValue: { paymentStatus: booking.paymentStatus, paymentMethod: booking.paymentMethod },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(200).json({
+            message: 'Reserva confirmada exitosamente',
+            booking: {
+                id: booking.id,
+                seatId: booking.seatId,
+                totalPrice: booking.totalPrice,
+                paymentStatus: booking.paymentStatus,
+                paymentMethod: booking.paymentMethod,
+                createdAt: booking.createdAt,
+            },
+        });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrada')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('No tienes permisos')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('No se puede confirmar')) return res.status(400).json({ error: error.message });
+        if (error.message?.includes('Pago rechazado')) return res.status(402).json({ error: error.message });
         next(error);
     }
 });

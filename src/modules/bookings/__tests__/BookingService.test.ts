@@ -269,7 +269,151 @@ describe('BookingService', () => {
         });
     });
 
+    describe('reserveSeat()', () => {
+        it('debe apartar un asiento con estado RESERVED sin cobrar', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+
+            const capturedCreate = jest.fn().mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.RESERVED });
+            mockBookingRepo.create = capturedCreate;
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.RESERVED });
+
+            const result = await bookingService.reserveSeat(baseBookingData);
+
+            expect(result.paymentStatus).toBe(PaymentStatus.RESERVED);
+            expect(capturedCreate).toHaveBeenCalledWith(
+                expect.objectContaining({ paymentStatus: PaymentStatus.RESERVED, totalPrice: 40 })
+            );
+            expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+        });
+
+        it('debe rechazar reservar un asiento ya ocupado en ese tramo', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([{ id: 'existing' }]); // conflicto
+
+            await expect(bookingService.reserveSeat(baseBookingData))
+                .rejects.toThrow('ya se encuentra ocupado');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+    });
+
+    describe('confirmReservation()', () => {
+        const reservedBooking = {
+            id: 'b1',
+            paymentStatus: PaymentStatus.RESERVED,
+            totalPrice: 40,
+            trip: mockTrip, // company-001
+        };
+
+        it('debe confirmar hacia PENDING_CASH cuando el metodo es efectivo', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking });
+            mockBookingRepo.save.mockImplementation((b: any) => Promise.resolve(b));
+
+            const result = await bookingService.confirmReservation(
+                'b1', 'cash', UserRole.ADMIN, 'company-001'
+            );
+
+            expect(result.paymentStatus).toBe(PaymentStatus.PENDING_CASH);
+            expect(result.paymentMethod).toBe('CASH');
+        });
+
+        it('debe confirmar hacia PAID_DIGITAL cuando el pago digital es exitoso', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking });
+            mockBookingRepo.save.mockImplementation((b: any) => Promise.resolve(b));
+            const mockGateway = {
+                processPayment: jest.fn().mockResolvedValue({ success: true, transactionId: 'txn-123' }),
+            };
+
+            const result = await bookingService.confirmReservation(
+                'b1', 'digital', UserRole.ADMIN, 'company-001',
+                mockGateway as any, { method: 'YAPE' } as any
+            );
+
+            expect(result.paymentStatus).toBe(PaymentStatus.PAID_DIGITAL);
+            expect(result.paymentGatewayRef).toBe('txn-123');
+        });
+
+        it('debe dejar la reserva en RESERVED si el pago digital es rechazado', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking });
+            const mockGateway = {
+                processPayment: jest.fn().mockResolvedValue({ success: false, errorMessage: 'Fondos insuficientes' }),
+            };
+
+            await expect(bookingService.confirmReservation(
+                'b1', 'digital', UserRole.ADMIN, 'company-001',
+                mockGateway as any, { method: 'YAPE' } as any
+            )).rejects.toThrow('Pago rechazado');
+
+            expect(mockBookingRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('NO debe permitir confirmar una reserva de OTRA empresa', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking });
+
+            await expect(bookingService.confirmReservation(
+                'b1', 'cash', UserRole.ADMIN, 'otra-empresa'
+            )).rejects.toThrow('No tienes permisos');
+        });
+
+        it('NO debe confirmar una reserva que ya no está en estado RESERVED', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking, paymentStatus: PaymentStatus.PENDING_CASH });
+
+            await expect(bookingService.confirmReservation(
+                'b1', 'cash', UserRole.ADMIN, 'company-001'
+            )).rejects.toThrow('No se puede confirmar');
+        });
+
+        it('SUPER_ADMIN debe poder confirmar cualquier reserva sin importar la empresa', async () => {
+            mockBookingRepo.findOne.mockResolvedValue({ ...reservedBooking });
+            mockBookingRepo.save.mockImplementation((b: any) => Promise.resolve(b));
+
+            const result = await bookingService.confirmReservation(
+                'b1', 'cash', UserRole.SUPER_ADMIN, undefined
+            );
+
+            expect(result.paymentStatus).toBe(PaymentStatus.PENDING_CASH);
+        });
+    });
+
     describe('cancelBooking()', () => {
+        it('no debe exponer passwordHash ni refreshToken del pasajero en la respuesta', async () => {
+            const booking = {
+                id: 'b1',
+                paymentStatus: PaymentStatus.PENDING_CASH,
+                user: { id: 'owner-1', email: 'owner@test.com', passwordHash: 'hash-secreto', refreshToken: 'token-secreto' },
+                trip: mockTrip,
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
+
+            const result = await bookingService.cancelBooking('b1', 'owner-1');
+            expect((result.user as any).passwordHash).toBeUndefined();
+            expect((result.user as any).refreshToken).toBeUndefined();
+            expect(result.user?.email).toBe('owner@test.com');
+        });
+
+        it('debe permitir a staff cancelar una reserva en estado RESERVED (nadie la confirmó)', async () => {
+            const booking = {
+                id: 'b1',
+                paymentStatus: PaymentStatus.RESERVED,
+                user: null,
+                trip: mockTrip, // company-001
+            };
+            mockBookingRepo.findOne.mockResolvedValue(booking);
+            mockBookingRepo.save.mockResolvedValue({ ...booking, paymentStatus: PaymentStatus.CANCELLED });
+
+            const result = await bookingService.cancelBooking('b1', undefined, UserRole.AGENCY_SELLER, 'company-001');
+            expect(result.paymentStatus).toBe(PaymentStatus.CANCELLED);
+        });
+
         it('debe permitir al dueño de la reserva cancelar una PENDING_CASH', async () => {
             const booking = {
                 id: 'b1',

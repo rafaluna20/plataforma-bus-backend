@@ -7,6 +7,9 @@ import { RouteWaypointEntity } from '../../../infrastructure/database/entities/R
 import { UserEntity } from '../../../infrastructure/database/entities/UserEntity';
 
 export enum PaymentStatus {
+    // Asiento apartado (nombre + documento del pasajero) sin cobro todavía.
+    // Se confirma después hacia PENDING_CASH o PAID_DIGITAL, o se cancela.
+    RESERVED = 'RESERVED',
     PENDING_CASH = 'PENDING_CASH',
     PENDING_DIGITAL = 'PENDING_DIGITAL',
     PAID_DIGITAL = 'PAID_DIGITAL',

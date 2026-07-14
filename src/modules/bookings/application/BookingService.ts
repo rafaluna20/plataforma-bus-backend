@@ -230,6 +230,125 @@ export class BookingService {
     }
 
     /**
+     * Aparta un asiento (RESERVED) con los datos del pasajero, sin cobrar
+     * todavía. Bloquea el asiento igual que una venta (misma validación de
+     * overbooking por tramos) -- se confirma después con confirmReservation()
+     * hacia una venta real, o se cancela con cancelBooking() si nadie la usa.
+     * Solo staff de la empresa (no PASSENGER) puede apartar asientos así, para
+     * evitar que alguien reserve indefinidamente sin pagar ni comprometerse.
+     */
+    public async reserveSeat(data: CreateBookingDTO): Promise<BookingEntity> {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction('SERIALIZABLE');
+
+        try {
+            const tripRepo = queryRunner.manager.getRepository(TripEntity);
+            const waypointRepo = queryRunner.manager.getRepository(RouteWaypointEntity);
+            const bookingRepo = queryRunner.manager.getRepository(BookingEntity);
+
+            const { trip, startWaypoint, endWaypoint, calculatedPrice } = await this.validateAndCalculate(
+                data,
+                bookingRepo,
+                tripRepo,
+                waypointRepo,
+                [PaymentStatus.CANCELLED, PaymentStatus.REFUNDED, PaymentStatus.FAILED]
+            );
+
+            const newBooking = bookingRepo.create({
+                trip,
+                passengerName: data.passengerName,
+                passengerDocType: data.passengerDocType,
+                passengerDocNum: data.passengerDocNum,
+                startWaypoint,
+                endWaypoint,
+                seatId: data.seatId,
+                totalPrice: calculatedPrice,
+                paymentStatus: PaymentStatus.RESERVED,
+                user: data.userId ? ({ id: data.userId } as any) : null,
+            });
+
+            await bookingRepo.save(newBooking);
+            await queryRunner.commitTransaction();
+
+            logger.info(`Asiento reservado: ${newBooking.id} | Asiento: ${data.seatId} | Precio: S/${calculatedPrice}`);
+            return newBooking;
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    /**
+     * Confirma una reserva (RESERVED) hacia una venta real, en efectivo o
+     * digital. El asiento ya estaba bloqueado desde reserveSeat(), así que
+     * acá no hace falta repetir la validación de overbooking.
+     * Permitido para staff (ADMIN/SUPER_ADMIN/AGENCY_SELLER/DRIVER) de la
+     * MISMA empresa del viaje -- cualquiera de ellos, no solo quien la creó.
+     */
+    public async confirmReservation(
+        bookingId: string,
+        method: 'cash' | 'digital',
+        actorRole: UserRole | undefined,
+        actorCompanyId: string | undefined,
+        paymentGateway?: PaymentGateway,
+        paymentDetails?: PaymentDetails,
+    ): Promise<BookingEntity> {
+        const bookingRepo = AppDataSource.getRepository(BookingEntity);
+        const booking = await bookingRepo.findOne({
+            where: { id: bookingId },
+            relations: { trip: { route: { company: true } } },
+        });
+
+        if (!booking) throw new Error('Reserva no encontrada');
+
+        const staffRoles = [UserRole.ADMIN, UserRole.AGENCY_SELLER, UserRole.DRIVER];
+        const isStaffOfSameCompany =
+            actorRole === UserRole.SUPER_ADMIN ||
+            (!!actorRole && staffRoles.includes(actorRole) && actorCompanyId === booking.trip.route.company.id);
+
+        if (!isStaffOfSameCompany) {
+            throw new Error('No tienes permisos para confirmar esta reserva');
+        }
+
+        if (booking.paymentStatus !== PaymentStatus.RESERVED) {
+            throw new Error(`No se puede confirmar una reserva con estado: ${booking.paymentStatus}`);
+        }
+
+        if (method === 'cash') {
+            booking.paymentStatus = PaymentStatus.PENDING_CASH;
+            booking.paymentMethod = 'CASH';
+            await bookingRepo.save(booking);
+            logger.info(`Reserva confirmada (efectivo): ${bookingId}`);
+            return booking;
+        }
+
+        if (!paymentGateway || !paymentDetails) {
+            throw new Error('paymentDetails es requerido para confirmar con pago digital');
+        }
+
+        paymentDetails.amount = Number(booking.totalPrice);
+        const paymentResult = await paymentGateway.processPayment(paymentDetails);
+
+        if (!paymentResult.success) {
+            // Dejar la reserva como estaba (RESERVED) -- el asiento sigue
+            // apartado, staff puede reintentar o confirmar en efectivo.
+            throw new Error(`Pago rechazado: ${paymentResult.errorMessage}`);
+        }
+
+        booking.paymentStatus = PaymentStatus.PAID_DIGITAL;
+        booking.paymentMethod = paymentDetails.method as string;
+        booking.paymentGatewayRef = paymentResult.transactionId ?? '';
+        await bookingRepo.save(booking);
+
+        logger.info(`Reserva confirmada (digital): ${bookingId} | Ref: ${booking.paymentGatewayRef}`);
+        return booking;
+    }
+
+    /**
      * Obtener reservas de un usuario autenticado
      */
     public async getMyBookings(userId: string, page = 1, limit = 10) {
@@ -258,10 +377,11 @@ export class BookingService {
 
     /**
      * Cancelar una reserva y liberar su asiento (permitido en cualquier estado
-     * activo: PENDING_CASH, PENDING_DIGITAL, PAID_DIGITAL o PAID -- no solo
-     * las pendientes de pago, ya que el caso de uso principal es "el pasajero
-     * ya pagó pero ya no viaja"). No permitido si ya está CANCELLED, FAILED o
-     * REFUNDED (estados terminales).
+     * activo: RESERVED, PENDING_CASH, PENDING_DIGITAL, PAID_DIGITAL o PAID --
+     * no solo las pendientes de pago, ya que el caso de uso principal es "el
+     * pasajero ya pagó pero ya no viaja" (o, para RESERVED, simplemente nadie
+     * confirmó el asiento apartado). No permitido si ya está CANCELLED, FAILED
+     * o REFUNDED (estados terminales).
      * Permitido para: (a) el usuario dueño de la reserva, o (b) staff
      * (ADMIN/SUPER_ADMIN/AGENCY_SELLER/DRIVER) de la MISMA empresa del viaje.
      * Antes, `userId` se recibía pero nunca se verificaba — cualquier usuario
@@ -297,6 +417,7 @@ export class BookingService {
         }
 
         const cancellableStatuses = [
+            PaymentStatus.RESERVED,
             PaymentStatus.PENDING_CASH,
             PaymentStatus.PENDING_DIGITAL,
             PaymentStatus.PAID_DIGITAL,
@@ -310,6 +431,15 @@ export class BookingService {
         await bookingRepo.save(booking);
 
         logger.info(`Reserva cancelada: ${bookingId}`);
+
+        // No exponer credenciales del pasajero (passwordHash/refreshToken) en
+        // la respuesta -- la relación `user` de arriba trae la entidad
+        // completa, y cuando quien cancela es staff (no el dueño), no debe
+        // recibir esos campos del pasajero.
+        if (booking.user) {
+            const { passwordHash: _, refreshToken: __, ...safeUser } = booking.user;
+            (booking as any).user = safeUser;
+        }
         return booking;
     }
 }

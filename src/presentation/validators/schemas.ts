@@ -92,6 +92,19 @@ export const CreateDigitalBookingSchema = CreateBookingSchema.and(z.object({
     }, { error: 'paymentDetails es requerido' }),
 }));
 
+/** Confirma una reserva (RESERVED) hacia una venta real, en efectivo o digital. */
+export const ConfirmReservationSchema = z.object({
+    method: z.enum(['cash', 'digital'], { error: 'method debe ser "cash" o "digital"' }),
+    paymentDetails: z.object({
+        method: z.string().min(1, 'El método de pago es requerido'),
+        token: z.string().optional(),
+        phoneNumber: z.string().optional(),
+    }).optional(),
+}).refine(
+    (data) => data.method !== 'digital' || !!data.paymentDetails,
+    { message: 'paymentDetails es requerido para confirmar con pago digital', path: ['paymentDetails'] }
+);
+
 // ─── Trip Management Schemas ──────────────────────────────────────────────────
 
 export const CreateTripSchema = z.object({

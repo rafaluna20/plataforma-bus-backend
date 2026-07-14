@@ -85,7 +85,9 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
             trip.route.waypoints.sort((a: any, b: any) => a.stopOrder - b.stopOrder);
         }
 
-        // Obtener asientos ocupados (activos)
+        // Obtener asientos ocupados (venta real, cualquier estado de pago activo)
+        // y apartados (RESERVED: pasajero identificado, sin cobrar todavía) por
+        // separado, para que el mapa de asientos pueda pintarlos distinto.
         const activeStatuses = [
             PaymentStatus.PENDING_CASH,
             PaymentStatus.PAID_DIGITAL,
@@ -105,9 +107,17 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
             .andWhere('b.payment_status IN (:...activeStatuses)', { activeStatuses })
             .getMany();
 
-        const occupiedSeats = bookings.map((b) => b.seatId);
+        const reservedBookings = await bookingRepo
+            .createQueryBuilder('b')
+            .select(['b.id', 'b.seatId'])
+            .where('b.trip_id = :tripId', { tripId })
+            .andWhere('b.payment_status = :reserved', { reserved: PaymentStatus.RESERVED })
+            .getMany();
 
-        return res.status(200).json({ trip, occupiedSeats });
+        const occupiedSeats = bookings.map((b) => b.seatId);
+        const reservedSeats = reservedBookings.map((b) => b.seatId);
+
+        return res.status(200).json({ trip, occupiedSeats, reservedSeats });
     } catch (error) {
         next(error);
     }
@@ -142,8 +152,11 @@ router.get(
 
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
 
-        // Incluir todos los estados activos (CORRECCIÓN del bug original)
+        // Incluir todos los estados activos (CORRECCIÓN del bug original) --
+        // RESERVED también aparece aquí (con su propio paymentStatus) para que
+        // el staff vea quién apartó cada asiento, no solo quién ya pagó.
         const activeStatuses = [
+            PaymentStatus.RESERVED,
             PaymentStatus.PENDING_CASH,
             PaymentStatus.PAID_DIGITAL,
             PaymentStatus.PAID,

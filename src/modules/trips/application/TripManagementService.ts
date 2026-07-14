@@ -443,8 +443,10 @@ export class TripManagementService {
 
         const bookingRepo = AppDataSource.getRepository(BookingEntity);
 
-        // CORRECCIÓN: Incluir PENDING_CASH, PAID_DIGITAL y PAID (todos los estados activos)
+        // CORRECCIÓN: Incluir PENDING_CASH, PAID_DIGITAL y PAID (todos los estados activos),
+        // más RESERVED (asientos apartados sin cobrar todavía).
         const activeStatuses = [
+            PaymentStatus.RESERVED,
             PaymentStatus.PENDING_CASH,
             PaymentStatus.PAID_DIGITAL,
             PaymentStatus.PAID,
