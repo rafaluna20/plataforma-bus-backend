@@ -33,6 +33,7 @@ export interface UpdateUserProfileDTO {
     docType?: string;
     docNum?: string;
     licenseNumber?: string; // Solo relevante para conductores
+    stationId?: string | null; // Solo relevante para vendedores (Punto de venta)
 }
 
 export interface PaginatedUsers {
@@ -231,8 +232,8 @@ export class AdminService {
 
     /**
      * Actualizar datos de perfil de un usuario de staff (nombre, teléfono,
-     * documento, N° de licencia). No permite cambiar email, password ni rol
-     * — eso pasa por sus propios endpoints dedicados.
+     * documento, N° de licencia, punto de venta). No permite cambiar email,
+     * password ni rol — eso pasa por sus propios endpoints dedicados.
      *
      * SEGURIDAD: mismas reglas que toggleUserStatus — un ADMIN solo puede
      * editar staff de su propia empresa, nunca a otro ADMIN ni a un
@@ -244,7 +245,7 @@ export class AdminService {
         actorRole?: UserRole,
         actorCompanyId?: string,
     ): Promise<Omit<UserEntity, 'passwordHash' | 'refreshToken'>> {
-        const user = await this.userRepo.findOne({ where: { id: userId }, relations: { company: true } });
+        const user = await this.userRepo.findOne({ where: { id: userId }, relations: { company: true, station: true } });
         if (!user) throw new Error('Usuario no encontrado');
 
         if (user.role === UserRole.SUPER_ADMIN) {
@@ -265,6 +266,18 @@ export class AdminService {
         if (data.docType !== undefined) user.docType = data.docType;
         if (data.docNum !== undefined) user.docNum = data.docNum;
         if (data.licenseNumber !== undefined) user.licenseNumber = data.licenseNumber || null;
+
+        if (data.stationId !== undefined) {
+            if (!data.stationId) {
+                user.station = null;
+            } else {
+                const station = await this.stationRepo.findOne({
+                    where: { id: data.stationId, company: { id: user.company?.id } },
+                });
+                if (!station) throw new Error('Paradero/Estación no encontrada o no pertenece a la empresa');
+                user.station = station;
+            }
+        }
 
         const saved = await this.userRepo.save(user);
         logger.info(`[Admin] Perfil actualizado: ${saved.email}`);

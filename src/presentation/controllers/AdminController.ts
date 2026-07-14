@@ -31,6 +31,8 @@ const UpdateStaffProfileSchema = z.object({
     docNum: z.string().min(6).max(20).optional(),
     phone: z.string().regex(/^[0-9+\-\s()]{7,20}$/).optional(),
     licenseNumber: z.string().max(30).optional().nullable(),
+    // Solo relevante para vendedores (Punto de venta); null = quitar asignación.
+    stationId: z.string().uuid('stationId debe ser un UUID válido').optional().nullable(),
 });
 
 const UpdateRoleSchema = z.object({
