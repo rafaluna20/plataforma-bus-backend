@@ -82,6 +82,8 @@ router.post('/login', authLimiter, validateBody(LoginSchema), async (req: Reques
 
         return res.status(200).json({
             message: 'Sesión iniciada exitosamente',
+            accessToken: tokens.accessToken,   // incluido para clientes móviles (app conductor)
+            refreshToken: tokens.refreshToken, // incluido para clientes móviles
             user: tokens.user,
         });
     } catch (error: any) {
