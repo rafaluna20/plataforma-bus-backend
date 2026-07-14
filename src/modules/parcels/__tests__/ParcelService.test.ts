@@ -196,6 +196,18 @@ describe('ParcelService', () => {
                 .resolves.toEqual([]);
         });
 
+        it('debe excluir las encomiendas CANCELADAS del listado del viaje', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockParcelRepo.find.mockResolvedValue([]);
+
+            await parcelService.getParcelsByTrip('trip-001', UserRole.ADMIN, 'company-001');
+
+            // El where debe filtrar status != CANCELLED (una encomienda cancelada
+            // no debe sumar en la barra de capacidad ni salir en el manifiesto).
+            const whereArg = mockParcelRepo.find.mock.calls[0][0].where;
+            expect(whereArg.status).toBeDefined();
+        });
+
         it('debe lanzar error si el viaje no existe', async () => {
             mockTripRepo.findOne.mockResolvedValue(null);
 
@@ -280,6 +292,17 @@ describe('ParcelService', () => {
 
             expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('parcel.start_waypoint_id = :sw', { sw: 'wp-lima' });
             expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith('parcel.end_waypoint_id = :ew', { ew: 'wp-huancayo' });
+        });
+
+        it('debe excluir las encomiendas CANCELADAS de la bandeja', async () => {
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+
+            await parcelService.getPendingParcels('company-001', {}, UserRole.ADMIN, 'company-001');
+
+            expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+                'parcel.status != :cancelled',
+                { cancelled: ParcelStatus.CANCELLED }
+            );
         });
     });
 

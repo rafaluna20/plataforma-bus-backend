@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { SearchTripsService, SearchTripsResult } from '../application/SearchTripsService';
+import { SearchTripsService, SearchTripsResult, sanitizeCompanyForPublic } from '../application/SearchTripsService';
 import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { TripEntity } from '../domain/TripEntity';
@@ -100,8 +100,12 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
         // Obtener asientos ocupados (venta real, cualquier estado de pago activo)
         // y apartados (RESERVED: pasajero identificado, sin cobrar todavía) por
         // separado, para que el mapa de asientos pueda pintarlos distinto.
+        // PENDING_DIGITAL incluido: es un pago digital en curso que SÍ bloquea
+        // el asiento en el backend — si no se pinta ocupado, otro vendedor lo
+        // ve libre, intenta venderlo y le rebota con "ocupado" sin explicación.
         const activeStatuses = [
             PaymentStatus.PENDING_CASH,
+            PaymentStatus.PENDING_DIGITAL,
             PaymentStatus.PAID_DIGITAL,
             PaymentStatus.PAID,
         ];
@@ -128,6 +132,9 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
 
         const occupiedSeats = bookings.map((b) => b.seatId);
         const reservedSeats = reservedBookings.map((b) => b.seatId);
+
+        // Endpoint público: no exponer datos internos de negocio de la empresa.
+        sanitizeCompanyForPublic(trip.route?.company);
 
         return res.status(200).json({ trip, occupiedSeats, reservedSeats });
     } catch (error) {

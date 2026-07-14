@@ -1,3 +1,4 @@
+import { Not } from 'typeorm';
 import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { ParcelEntity, ParcelStatus } from '../domain/ParcelEntity';
 import { PaymentStatus } from '../../bookings/domain/BookingEntity';
@@ -151,7 +152,10 @@ export class ParcelService {
     }
 
     /**
-     * Obtiene todas las encomiendas de un viaje específico.
+     * Obtiene las encomiendas de un viaje específico. Las CANCELADAS se
+     * excluyen: ya no forman parte de la carga del viaje — no deben sumar en
+     * la barra de capacidad, ni salir en el manifiesto de encomiendas, ni
+     * contar en las estadísticas de vendedores.
      */
     public async getParcelsByTrip(tripId: string, actorRole?: UserRole, actorCompanyId?: string): Promise<ParcelEntity[]> {
         const tripRepo = AppDataSource.getRepository(TripEntity);
@@ -166,7 +170,7 @@ export class ParcelService {
         const parcelRepo = AppDataSource.getRepository(ParcelEntity);
 
         const parcels = await parcelRepo.find({
-            where: { trip: { id: tripId } },
+            where: { trip: { id: tripId }, status: Not(ParcelStatus.CANCELLED) },
             relations: {
                 startWaypoint: { station: true },
                 endWaypoint:   { station: true },
@@ -264,7 +268,9 @@ export class ParcelService {
             .leftJoinAndSelect('endWaypoint.station', 'endStation')
             .leftJoinAndSelect('parcel.seller', 'seller')
             .where('parcel.trip_id IS NULL')
-            .andWhere('startRoute.company_id = :companyId', { companyId });
+            .andWhere('startRoute.company_id = :companyId', { companyId })
+            // Una encomienda cancelada no está "pendiente de asignar" — ya no viaja.
+            .andWhere('parcel.status != :cancelled', { cancelled: ParcelStatus.CANCELLED });
 
         if (filters.startWaypointId) {
             qb.andWhere('parcel.start_waypoint_id = :sw', { sw: filters.startWaypointId });

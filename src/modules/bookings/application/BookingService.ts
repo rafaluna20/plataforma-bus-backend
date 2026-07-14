@@ -2,7 +2,7 @@ import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { BookingEntity, PaymentStatus } from '../domain/BookingEntity';
 // Import directo al domain (no al barrel del módulo) para evitar cargar
 // TripManagementController/TripManagementService solo por la entidad.
-import { TripEntity } from '../../trips/domain/TripEntity';
+import { TripEntity, TripStatus } from '../../trips/domain/TripEntity';
 import { RouteWaypointEntity } from '../../../infrastructure/database/entities/RouteWaypointEntity';
 import { PaymentGateway, PaymentDetails } from '../../payments/application/ports/PaymentGateway';
 import { logger } from '../../../infrastructure/logger';
@@ -62,6 +62,14 @@ export class BookingService {
             relations: { route: { company: true }, vehicle: true },
         });
         if (!trip) throw new Error('Viaje no encontrado');
+
+        // No se puede vender/reservar en un viaje que ya terminó o fue
+        // cancelado. SCHEDULED/BOARDING/IN_TRANSIT sí permiten venta:
+        // IN_TRANSIT cubre el caso real de vender un tramo intermedio
+        // (ej. el bus salió de Huancayo y un pasajero sube en Jauja).
+        if (trip.status === TripStatus.CANCELLED || trip.status === TripStatus.COMPLETED) {
+            throw new Error(`No se puede vender pasajes en un viaje ${trip.status === TripStatus.CANCELLED ? 'cancelado' : 'ya completado'}`);
+        }
 
         // Staff (ADMIN/AGENCY_SELLER/DRIVER) solo vende pasajes de SU empresa;
         // un PASSENGER autocomprando puede elegir cualquier empresa del marketplace.

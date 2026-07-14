@@ -103,7 +103,7 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
         if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
-        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
+        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico') || error.message.includes('No se puede vender'))) {
             return res.status(400).json({ error: error.message });
         }
         next(error);
@@ -207,7 +207,7 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
         if (error.message?.includes('Pago rechazado')) {
             return res.status(402).json({ error: error.message });
         }
-        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
+        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico') || error.message.includes('No se puede vender'))) {
             return res.status(400).json({ error: error.message });
         }
         next(error);
@@ -289,7 +289,7 @@ router.post(
         if (error.message?.includes('ocupado')) {
             return res.status(409).json({ error: error.message });
         }
-        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico'))) {
+        if (error.message && (error.message.includes('no encontrado') || error.message.includes('inválidos') || error.message.includes('ilógico') || error.message.includes('No se puede vender'))) {
             return res.status(400).json({ error: error.message });
         }
         next(error);
@@ -301,9 +301,16 @@ router.post(
  * Busca un pasajero por su tipo y número de documento (DNI o RUC).
  * Prioriza la búsqueda local en PostgreSQL (UserEntity, BookingEntity, ParcelEntity).
  * Si no lo encuentra, consulta el API externo (apisperu).
- * ✅ REQUIERE autenticación
+ * ✅ SOLO STAFF: devuelve el nombre completo de cualquier persona a partir de
+ * su DNI (BD local + RENIEC) — dejarlo abierto a cualquier usuario autenticado
+ * permitiría a un pasajero recién registrado enumerar DNIs masivamente (fuga
+ * de datos personales, Ley 29733).
  */
-router.get('/passenger/lookup', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+router.get(
+    '/passenger/lookup',
+    authenticate,
+    authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.AGENCY_SELLER, UserRole.DRIVER),
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { docType, docNum } = req.query;
         if (!docType || !docNum) {
@@ -371,10 +378,14 @@ router.get('/passenger/lookup', authenticate, async (req: Request, res: Response
             });
         }
 
-        // 2. Buscar en API externa (apisperu) si no se encontró localmente
-        const token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFrYWxscGEuc2FjQGdtYWlsLmNvbSJ9.kyTC7ka84weV9PqA3n4nDV8y2i4cc4EFgESWgADdp4o';
+        // 2. Buscar en API externa (apisperu) si no se encontró localmente.
+        // El token vive en variables de entorno (APISPERU_TOKEN) — nunca
+        // hardcodeado en el código: el fuente va a GitHub, un secreto no.
+        // Sin token configurado, se omite la consulta externa (la búsqueda
+        // local de arriba sigue funcionando igual).
+        const token = process.env.APISPERU_TOKEN;
 
-        if (docTypeStr === 'DNI' && docNumStr.length === 8) {
+        if (token && docTypeStr === 'DNI' && docNumStr.length === 8) {
             const url = `https://dniruc.apisperu.com/api/v1/dni/${docNumStr}?token=${token}`;
             try {
                 const response = await fetch(url);
@@ -395,7 +406,7 @@ router.get('/passenger/lookup', authenticate, async (req: Request, res: Response
             } catch (apiErr) {
                 console.error('Error llamando a apisperu DNI:', apiErr);
             }
-        } else if (docTypeStr === 'RUC' && docNumStr.length === 11) {
+        } else if (token && docTypeStr === 'RUC' && docNumStr.length === 11) {
             const url = `https://dniruc.apisperu.com/api/v1/ruc/${docNumStr}?token=${token}`;
             try {
                 const response = await fetch(url);

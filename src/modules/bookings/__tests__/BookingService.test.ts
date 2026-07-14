@@ -252,6 +252,37 @@ describe('BookingService', () => {
             expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
         });
 
+        it('NO debe permitir vender en un viaje CANCELADO', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ ...mockTrip, status: 'CANCELLED' });
+
+            await expect(bookingService.createCashBooking(baseBookingData))
+                .rejects.toThrow('viaje cancelado');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('NO debe permitir vender en un viaje ya COMPLETADO', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ ...mockTrip, status: 'COMPLETED' });
+
+            await expect(bookingService.createCashBooking(baseBookingData))
+                .rejects.toThrow('ya completado');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+        });
+
+        it('SÍ debe permitir vender en un viaje IN_TRANSIT (venta de tramo intermedio)', async () => {
+            mockTripRepo.findOne.mockResolvedValue({ ...mockTrip, status: 'IN_TRANSIT' });
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+            mockBookingRepo.create.mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            await expect(bookingService.createCashBooking(baseBookingData)).resolves.not.toThrow();
+        });
+
         it('debe lanzar error si el asiento ya está ocupado en el tramo', async () => {
             mockTripRepo.findOne.mockResolvedValue(mockTrip);
             mockWaypointRepo.findOne

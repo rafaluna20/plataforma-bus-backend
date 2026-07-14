@@ -22,6 +22,21 @@ export interface SearchTripsResult {
     searchParams?: { originCity: string; destinationCity: string; travelDate: Date };
 }
 
+/**
+ * Quita de la empresa los campos internos de negocio antes de exponerla en
+ * endpoints PÚBLICOS (búsqueda y detalle de viaje, sin autenticación):
+ * la comisión que el marketplace le cobra a la empresa y sus contadores/serie
+ * de numeración no son datos que un competidor deba poder leer con un curl.
+ */
+export function sanitizeCompanyForPublic(company: any): void {
+    if (!company) return;
+    delete company.commissionRate;
+    delete company.manifestNextNumber;
+    delete company.ticketNextNumber;
+    delete company.manifestSeries;
+    delete company.sunatPrintAuthorization;
+}
+
 export class SearchTripsService {
     private readonly fareRuleService = new FareRuleService();
 
@@ -39,6 +54,7 @@ export class SearchTripsService {
                     trip.route.id, trip.departureTime, trip.route.waypoints as any
                 ) as any;
             }
+            sanitizeCompanyForPublic(trip.route?.company);
         }
         return trips;
     }
