@@ -38,11 +38,17 @@ const mockBookingRepo = {
     createQueryBuilder: jest.fn(() => mockBookingQB),
 };
 
+// Sin reglas de tarifa configuradas → multiplicador 1 (no altera el precio base)
+const mockFareRuleRepo = {
+    find: jest.fn().mockResolvedValue([]),
+};
+
 jest.mock('../../../infrastructure/database/data-source', () => ({
     AppDataSource: {
         getRepository: jest.fn((entity) => {
             const name = entity?.name || '';
             if (name === 'BookingEntity') return mockBookingRepo;
+            if (name === 'FareRuleEntity') return mockFareRuleRepo;
             return mockTripRepo;
         }),
     },

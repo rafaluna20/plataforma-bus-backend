@@ -7,6 +7,7 @@ import { UserRole } from '../../infrastructure/database/entities/UserEntity';
 import { TripStatus } from '../../modules/trips/domain/TripEntity';
 import { VehicleType, ServiceMode } from '../../infrastructure/database/entities/VehicleEntity';
 import { ParcelStatus } from '../../modules/parcels/domain/ParcelEntity';
+import { FareRuleType } from '../../infrastructure/database/entities/FareRuleEntity';
 
 // ─── Auth Schemas ─────────────────────────────────────────────────────────────
 
@@ -83,9 +84,15 @@ export const CreateBookingSchema = z.object({
     passengerAge: z.number().int().min(0).max(120).optional(),
     passengerPhone: z.string().max(20).optional(),
     observations: z.string().max(200).optional(),
+    // ─── Ajuste manual de precio (solo ADMIN; validado también en el servicio) ─
+    priceOverride: z.coerce.number().min(0.01, 'priceOverride debe ser mayor a 0').optional(),
+    overrideReason: z.string().min(3, 'Debes indicar un motivo para ajustar el precio').max(200).optional(),
 }).refine(
     (data) => data.startWaypointId !== data.endWaypointId,
     { message: 'El origen y el destino no pueden ser el mismo punto', path: ['endWaypointId'] }
+).refine(
+    (data) => data.priceOverride === undefined || !!data.overrideReason,
+    { message: 'Debes indicar un motivo al ajustar el precio manualmente', path: ['overrideReason'] }
 );
 
 export const CreateDigitalBookingSchema = CreateBookingSchema.and(z.object({
@@ -335,6 +342,38 @@ export const UpdateRouteSchema = z.object({
     serviceMode: z.nativeEnum(ServiceMode).optional(),
     polyline: z.string().optional().nullable(),
     waypoints: z.array(WaypointInputSchema).min(2, 'Una ruta debe tener al menos 2 paradas (Origen y Destino)').optional(),
+});
+
+// ─── Fare Rule Schemas (tarifas dinámicas por franja horaria / fecha) ─────────
+
+const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+export const CreateFareRuleSchema = z.object({
+    routeId: z.string().uuid('routeId debe ser un UUID válido'),
+    name: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(100).trim(),
+    ruleType: z.nativeEnum(FareRuleType, {
+        error: `Tipo de regla inválido. Use: ${Object.values(FareRuleType).join(', ')}`,
+    }),
+    startTime: z.string().regex(timeRegex, 'startTime debe tener formato HH:mm').optional().nullable(),
+    endTime: z.string().regex(timeRegex, 'endTime debe tener formato HH:mm').optional().nullable(),
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).optional().nullable(),
+    startDate: z.string().regex(dateRegex, 'startDate debe tener formato YYYY-MM-DD').optional().nullable(),
+    endDate: z.string().regex(dateRegex, 'endDate debe tener formato YYYY-MM-DD').optional().nullable(),
+    priceMultiplier: z.coerce.number().min(0.01, 'priceMultiplier debe ser mayor a 0').max(10, 'priceMultiplier no puede superar 10'),
+    priority: z.number().int().min(0).max(100).optional(),
+});
+
+export const UpdateFareRuleSchema = z.object({
+    name: z.string().min(2).max(100).trim().optional(),
+    startTime: z.string().regex(timeRegex, 'startTime debe tener formato HH:mm').optional().nullable(),
+    endTime: z.string().regex(timeRegex, 'endTime debe tener formato HH:mm').optional().nullable(),
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).optional().nullable(),
+    startDate: z.string().regex(dateRegex, 'startDate debe tener formato YYYY-MM-DD').optional().nullable(),
+    endDate: z.string().regex(dateRegex, 'endDate debe tener formato YYYY-MM-DD').optional().nullable(),
+    priceMultiplier: z.coerce.number().min(0.01).max(10).optional(),
+    priority: z.number().int().min(0).max(100).optional(),
+    isActive: z.boolean().optional(),
 });
 
 // ─── Parcel Schemas ───────────────────────────────────────────────────────────

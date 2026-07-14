@@ -8,6 +8,7 @@ import { PaymentGateway, PaymentDetails } from '../../payments/application/ports
 import { logger } from '../../../infrastructure/logger';
 import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 import { assertSameCompany } from '../../../infrastructure/auth/companyScope';
+import { FareRuleService } from '../../../application/services/FareRuleService';
 
 export interface CreateBookingDTO {
     tripId: string;
@@ -24,9 +25,15 @@ export interface CreateBookingDTO {
     passengerAge?: number;
     passengerPhone?: string;
     observations?: string;
+    // ─── Ajuste manual de precio -- solo ADMIN/SUPER_ADMIN, y solo con motivo.
+    // Queda registrado en auditoría (ver BookingController) comparando contra
+    // systemPrice, el precio que el sistema hubiese cobrado sin el ajuste.
+    priceOverride?: number;
+    overrideReason?: string;
 }
 
 export class BookingService {
+    private readonly fareRuleService = new FareRuleService();
 
     /**
      * Determina el piso (1 = VIP/abajo, 2 = estándar) de un asiento a partir del
@@ -99,20 +106,37 @@ export class BookingService {
 
         const seatFloor = this.getSeatFloor(trip.vehicle, data.seatId);
 
-        let calculatedPrice = 0;
+        let basePrice = 0;
         for (const wp of allRouteWaypoints) {
             if (wp.stopOrder > startWaypoint.stopOrder && wp.stopOrder <= endWaypoint.stopOrder) {
-                calculatedPrice += seatFloor === 1 && wp.basePriceFloor1 != null
+                basePrice += seatFloor === 1 && wp.basePriceFloor1 != null
                     ? Number(wp.basePriceFloor1)
                     : Number(wp.basePrice);
             }
         }
 
-        if (calculatedPrice <= 0) {
+        if (basePrice <= 0) {
             throw new Error('No se pudo calcular el precio para este tramo. Verifica los waypoints.');
         }
 
-        return { trip, startWaypoint, endWaypoint, calculatedPrice };
+        // 4. Tarifa dinámica: aplicar el multiplicador de la regla vigente
+        // (franja horaria / fecha especial) para la hora de salida del viaje.
+        const multiplier = await this.fareRuleService.getMultiplier(trip.route.id, trip.departureTime);
+        const systemPrice = Math.round(basePrice * multiplier * 100) / 100;
+
+        // 5. Ajuste manual de precio (solo ADMIN/SUPER_ADMIN, con motivo
+        // obligatorio) -- válvula de excepción puntual, auditada por el
+        // controller comparando calculatedPrice (lo cobrado) vs systemPrice.
+        let calculatedPrice = systemPrice;
+        if (data.priceOverride && data.priceOverride > 0) {
+            const isAdmin = data.actorRole === UserRole.ADMIN || data.actorRole === UserRole.SUPER_ADMIN;
+            if (!isAdmin) {
+                throw new Error('Solo un ADMIN puede ajustar manualmente el precio de un pasaje');
+            }
+            calculatedPrice = data.priceOverride;
+        }
+
+        return { trip, startWaypoint, endWaypoint, calculatedPrice, systemPrice };
     }
 
     /**
@@ -147,7 +171,7 @@ export class BookingService {
             const waypointRepo = queryRunner.manager.getRepository(RouteWaypointEntity);
             const bookingRepo = queryRunner.manager.getRepository(BookingEntity);
 
-            const { trip, startWaypoint, endWaypoint, calculatedPrice } = await this.validateAndCalculate(
+            const { trip, startWaypoint, endWaypoint, calculatedPrice, systemPrice } = await this.validateAndCalculate(
                 data,
                 bookingRepo,
                 tripRepo,
@@ -178,6 +202,10 @@ export class BookingService {
             await queryRunner.commitTransaction();
 
             logger.info(`Reserva al contado creada: ${newBooking.id} | Asiento: ${data.seatId} | Precio: S/${calculatedPrice}`);
+            // Precio "de sistema" (sin el ajuste manual, si lo hubo) — no se
+            // persiste, solo viaja en la respuesta para que el controller
+            // pueda auditar la diferencia si actorRole ajustó el precio.
+            (newBooking as any).systemPrice = systemPrice;
             return newBooking;
 
         } catch (error) {
@@ -206,7 +234,7 @@ export class BookingService {
             const waypointRepo = queryRunner.manager.getRepository(RouteWaypointEntity);
             const bookingRepo = queryRunner.manager.getRepository(BookingEntity);
 
-            const { trip, startWaypoint, endWaypoint, calculatedPrice } = await this.validateAndCalculate(
+            const { trip, startWaypoint, endWaypoint, calculatedPrice, systemPrice } = await this.validateAndCalculate(
                 data,
                 bookingRepo,
                 tripRepo,
@@ -253,6 +281,10 @@ export class BookingService {
             await queryRunner.commitTransaction();
 
             logger.info(`Reserva digital creada: ${newBooking.id} | Asiento: ${data.seatId} | Precio: S/${calculatedPrice} | Ref: ${newBooking.paymentGatewayRef}`);
+            // Precio "de sistema" (sin el ajuste manual, si lo hubo) — no se
+            // persiste, solo viaja en la respuesta para que el controller
+            // pueda auditar la diferencia si actorRole ajustó el precio.
+            (newBooking as any).systemPrice = systemPrice;
             return newBooking;
 
         } catch (error) {
@@ -281,7 +313,7 @@ export class BookingService {
             const waypointRepo = queryRunner.manager.getRepository(RouteWaypointEntity);
             const bookingRepo = queryRunner.manager.getRepository(BookingEntity);
 
-            const { trip, startWaypoint, endWaypoint, calculatedPrice } = await this.validateAndCalculate(
+            const { trip, startWaypoint, endWaypoint, calculatedPrice, systemPrice } = await this.validateAndCalculate(
                 data,
                 bookingRepo,
                 tripRepo,
@@ -312,6 +344,10 @@ export class BookingService {
             await queryRunner.commitTransaction();
 
             logger.info(`Asiento reservado: ${newBooking.id} | Asiento: ${data.seatId} | Precio: S/${calculatedPrice}`);
+            // Precio "de sistema" (sin el ajuste manual, si lo hubo) — no se
+            // persiste, solo viaja en la respuesta para que el controller
+            // pueda auditar la diferencia si actorRole ajustó el precio.
+            (newBooking as any).systemPrice = systemPrice;
             return newBooking;
 
         } catch (error) {

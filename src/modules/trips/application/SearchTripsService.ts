@@ -2,6 +2,7 @@ import { AppDataSource } from '../../../infrastructure/database/data-source';
 import { TripEntity, TripStatus } from '../domain/TripEntity';
 import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntity';
 import { cache, CacheKeys, CacheTTL } from '../../../infrastructure/cache/RedisCache';
+import { FareRuleService } from '../../../application/services/FareRuleService';
 
 export interface SearchTripsDTO {
     originCity?: string;
@@ -22,6 +23,26 @@ export interface SearchTripsResult {
 }
 
 export class SearchTripsService {
+    private readonly fareRuleService = new FareRuleService();
+
+    /**
+     * Ajusta el precio base de los waypoints de cada viaje según la regla de
+     * tarifa vigente (franja horaria / fecha especial) para SU hora de salida
+     * -- se recalcula siempre en vivo, nunca se cachea, igual que
+     * attachAvailableSeats, para que el precio del resultado de búsqueda
+     * coincida con el que se cobrará al reservar.
+     */
+    private async applyFareRules(trips: TripEntity[]): Promise<TripEntity[]> {
+        for (const trip of trips) {
+            if (trip.route?.waypoints) {
+                trip.route.waypoints = await this.fareRuleService.applyToWaypoints(
+                    trip.route.id, trip.departureTime, trip.route.waypoints as any
+                ) as any;
+            }
+        }
+        return trips;
+    }
+
     /**
      * Capacidad efectiva de un vehículo: el seatTemplate es la fuente de verdad de qué
      * asientos se renderizan/venden realmente. vehicle.capacity es una columna separada
@@ -96,9 +117,11 @@ export class SearchTripsService {
             const cacheKey = CacheKeys.tripSearch(originCity!, destinationCity!, dateStr, page, limit);
             const cached = await cache.get<SearchTripsResult>(cacheKey);
             if (cached) {
-                // Los asientos disponibles se recalculan siempre en vivo (no se cachean)
-                // para reflejar las reservas más recientes.
+                // Los asientos disponibles y el precio (tarifa dinámica) se
+                // recalculan siempre en vivo (no se cachean) para reflejar
+                // las reservas y la hora actual más recientes.
                 cached.data = await this.attachAvailableSeats(cached.data);
+                cached.data = await this.applyFareRules(cached.data);
                 return cached;
             }
         }
@@ -173,12 +196,18 @@ export class SearchTripsService {
                 : {}),
         };
 
-        // Guardar en caché por 5 minutos solo para búsquedas completas (origen + destino + fecha)
+        // Guardar en caché por 5 minutos solo para búsquedas completas (origen + destino + fecha).
+        // OJO: se cachea ANTES de aplicar las reglas de tarifa (abajo), para
+        // que el caché siempre guarde el precio base sin ajustar -- si se
+        // cacheara ya ajustado, un futuro cache-hit volvería a multiplicar
+        // sobre un precio ya multiplicado (bug de doble ajuste).
         if (hasRouteFilter && travelDate) {
             const dateStr = travelDate.toISOString().split('T')[0];
             const cacheKey = CacheKeys.tripSearch(originCity!, destinationCity!, dateStr, page, limit);
             await cache.set(cacheKey, result, CacheTTL.TRIP_SEARCH);
         }
+
+        result.data = await this.applyFareRules(result.data);
 
         return result;
     }

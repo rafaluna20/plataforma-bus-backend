@@ -31,6 +31,11 @@ const mockWaypointRepo = {
     find: jest.fn(),
 };
 
+// Sin reglas de tarifa configuradas → multiplicador 1 (no altera el precio base)
+const mockFareRuleRepo = {
+    find: jest.fn().mockResolvedValue([]),
+};
+
 const mockQueryRunner = {
     connect: jest.fn(),
     startTransaction: jest.fn(),
@@ -56,6 +61,7 @@ jest.mock('../../../infrastructure/database/data-source', () => ({
         getRepository: jest.fn((entity) => {
             const name = entity?.name || '';
             if (name === 'BookingEntity') return mockBookingRepo;
+            if (name === 'FareRuleEntity') return mockFareRuleRepo;
             return mockBookingRepo;
         }),
     },
@@ -268,6 +274,74 @@ describe('BookingService', () => {
 
             expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
             expect(mockQueryRunner.release).toHaveBeenCalled();
+        });
+
+        // ─── Tarifa dinámica y ajuste manual de precio ─────────────────────────
+
+        it('debe aplicar el multiplicador de la regla de tarifa vigente al precio calculado', async () => {
+            const tripWithDeparture = { ...mockTrip, departureTime: new Date('2026-07-15T14:00:00.000Z') }; // 09:00 Perú
+            mockTripRepo.findOne.mockResolvedValue(tripWithDeparture);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+            mockFareRuleRepo.find.mockResolvedValueOnce([
+                { ruleType: 'TIME_BAND', startTime: '08:00', endTime: '12:00', daysOfWeek: null, priceMultiplier: 1.5, priority: 0, isActive: true },
+            ]);
+
+            const capturedCreate = jest.fn().mockReturnValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+            mockBookingRepo.create = capturedCreate;
+            mockBookingRepo.save.mockResolvedValue({ id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH });
+
+            await bookingService.createCashBooking(baseBookingData);
+
+            // Precio base 40 (25+15) × 1.5 = 60
+            expect(capturedCreate).toHaveBeenCalledWith(expect.objectContaining({ totalPrice: 60 }));
+        });
+
+        it('un ADMIN debe poder ajustar manualmente el precio con motivo', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+
+            const savedBooking = { id: 'b1', paymentStatus: PaymentStatus.PENDING_CASH, totalPrice: 25 };
+            mockBookingRepo.create.mockReturnValue(savedBooking);
+            mockBookingRepo.save.mockResolvedValue(savedBooking);
+
+            const result = await bookingService.createCashBooking({
+                ...baseBookingData,
+                actorRole: UserRole.ADMIN,
+                actorCompanyId: 'company-001',
+                priceOverride: 25,
+                overrideReason: 'Descuento autorizado',
+            });
+
+            // El precio "de sistema" (sin ajustar) viaja en la respuesta para que
+            // el controller pueda auditar la diferencia -- no se persiste.
+            expect((result as any).systemPrice).toBe(40);
+        });
+
+        it('NO debe permitir que un AGENCY_SELLER ajuste manualmente el precio', async () => {
+            mockTripRepo.findOne.mockResolvedValue(mockTrip);
+            mockWaypointRepo.findOne
+                .mockResolvedValueOnce(mockStartWaypoint)
+                .mockResolvedValueOnce(mockEndWaypoint);
+            mockQueryBuilder.getMany.mockResolvedValue([]);
+            mockWaypointRepo.find.mockResolvedValue(mockAllWaypoints);
+
+            await expect(bookingService.createCashBooking({
+                ...baseBookingData,
+                actorRole: UserRole.AGENCY_SELLER,
+                actorCompanyId: 'company-001',
+                priceOverride: 10,
+                overrideReason: 'Intento no autorizado',
+            })).rejects.toThrow('Solo un ADMIN puede ajustar');
+
+            expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
         });
     });
 

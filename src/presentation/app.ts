@@ -22,6 +22,7 @@ import vehicleRoutes from './controllers/VehicleController';
 import routeRoutes from './controllers/RouteController';
 import adminRoutes from './controllers/AdminController';
 import brandingRoutes from './controllers/CompanyBrandingController';
+import fareRuleRoutes from './controllers/FareRuleController';
 import { parcelRoutes } from '../modules/parcels';
 import { tripRoutes, tripMgmtRoutes } from '../modules/trips';
 import { bookingRoutes } from '../modules/bookings';
@@ -185,6 +186,14 @@ class App {
             companyLimiter,
             authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
             routeRoutes
+        );
+        // Tarifas dinámicas por franja horaria / fecha especial (feriados)
+        this.express.use(
+            '/api/v1/fare-rules',
+            authenticate,
+            companyLimiter,
+            authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+            fareRuleRoutes
         );
         // AGENCY_SELLER incluido para poder autorizar el abordaje (PATCH /:id/status);
         // las demás rutas (crear/reprogramar/listar) restringen el rol internamente.

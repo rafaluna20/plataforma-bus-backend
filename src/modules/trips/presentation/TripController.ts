@@ -5,9 +5,11 @@ import { BookingEntity, PaymentStatus } from '../../bookings/domain/BookingEntit
 import { TripEntity } from '../domain/TripEntity';
 import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 import { authenticate, authorize } from '../../../presentation/middlewares/auth.middleware';
+import { FareRuleService } from '../../../application/services/FareRuleService';
 
 const router = Router();
 const searchTripsService = new SearchTripsService();
+const fareRuleService = new FareRuleService();
 
 /**
  * GET /api/v1/trips/search?origin=Lima&destination=Huancayo&date=2026-07-15&page=1&limit=15
@@ -83,6 +85,16 @@ router.get('/:tripId', async (req: Request, res: Response, next: NextFunction) =
         // Ordenar waypoints
         if (trip.route?.waypoints) {
             trip.route.waypoints.sort((a: any, b: any) => a.stopOrder - b.stopOrder);
+        }
+
+        // Tarifa dinámica: ajustar el precio base de cada tramo según la regla
+        // vigente (franja horaria / fecha especial) para la hora de salida de
+        // ESTE viaje, así el precio que ve el pasajero antes de pagar coincide
+        // con el que realmente se le cobrará al reservar.
+        if (trip.route?.waypoints) {
+            trip.route.waypoints = await fareRuleService.applyToWaypoints(
+                trip.route.id, trip.departureTime, trip.route.waypoints as any
+            ) as any;
         }
 
         // Obtener asientos ocupados (venta real, cualquier estado de pago activo)

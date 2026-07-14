@@ -33,6 +33,8 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
             passengerAge,
             passengerPhone,
             observations,
+            priceOverride,
+            overrideReason,
         } = req.body;
 
         // Pasar el userId del usuario autenticado para trazabilidad
@@ -47,6 +49,8 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
             passengerAge,
             passengerPhone,
             observations,
+            priceOverride,
+            overrideReason,
             userId: req.user?.sub,
             actorRole: req.user?.role,
             actorCompanyId: req.user?.companyId,
@@ -63,6 +67,21 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
             userAgent: req.get('user-agent'),
         });
 
+        const systemPrice = (booking as any).systemPrice;
+        if (systemPrice !== undefined && Number(systemPrice) !== Number(booking.totalPrice)) {
+            await AuditLogService.log({
+                userId: req.user?.sub,
+                userEmail: req.user?.email,
+                action: 'PRICE_OVERRIDE_APPLIED',
+                entityName: 'BookingEntity',
+                entityId: booking.id,
+                oldValue: { systemPrice },
+                newValue: { totalPrice: booking.totalPrice, reason: overrideReason },
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+            });
+        }
+
         return res.status(201).json({
             message: 'Reserva creada exitosamente',
             booking: {
@@ -76,6 +95,9 @@ router.post('/', authenticate, validateBody(CreateBookingSchema), async (req: Re
         });
     } catch (error: any) {
         if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        if (error.message?.includes('Solo un ADMIN puede ajustar')) {
             return res.status(403).json({ error: error.message });
         }
         if (error.message?.includes('ocupado')) {
@@ -107,6 +129,8 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
             passengerPhone,
             observations,
             paymentDetails, // { method, token, phoneNumber }
+            priceOverride,
+            overrideReason,
         } = req.body;
 
         const booking = await bookingService.createDigitalBooking(
@@ -121,6 +145,8 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
                 passengerAge,
                 passengerPhone: passengerPhone || paymentDetails?.phoneNumber,
                 observations,
+                priceOverride,
+                overrideReason,
                 userId: req.user?.sub,
                 actorRole: req.user?.role,
                 actorCompanyId: req.user?.companyId,
@@ -140,6 +166,21 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
             userAgent: req.get('user-agent'),
         });
 
+        const systemPrice = (booking as any).systemPrice;
+        if (systemPrice !== undefined && Number(systemPrice) !== Number(booking.totalPrice)) {
+            await AuditLogService.log({
+                userId: req.user?.sub,
+                userEmail: req.user?.email,
+                action: 'PRICE_OVERRIDE_APPLIED',
+                entityName: 'BookingEntity',
+                entityId: booking.id,
+                oldValue: { systemPrice },
+                newValue: { totalPrice: booking.totalPrice, reason: overrideReason },
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+            });
+        }
+
         return res.status(201).json({
             message: 'Pago procesado y reserva creada exitosamente',
             booking: {
@@ -155,6 +196,9 @@ router.post('/digital', authenticate, validateBody(CreateDigitalBookingSchema), 
         });
     } catch (error: any) {
         if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        if (error.message?.includes('Solo un ADMIN puede ajustar')) {
             return res.status(403).json({ error: error.message });
         }
         if (error.message?.includes('ocupado')) {
@@ -237,6 +281,9 @@ router.post(
         });
     } catch (error: any) {
         if (error.message?.includes('otra empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        if (error.message?.includes('Solo un ADMIN puede ajustar')) {
             return res.status(403).json({ error: error.message });
         }
         if (error.message?.includes('ocupado')) {
