@@ -16,6 +16,8 @@ export interface CreateVehicleDTO {
     brand?: string;
     circulationCard?: string;
     insurancePolicy?: string;
+    /** Capacidad máxima de carga en kg para encomiendas (opcional). */
+    maxCargoWeightKg?: number;
 }
 
 export interface UpdateVehicleDTO {
@@ -30,6 +32,7 @@ export interface UpdateVehicleDTO {
     brand?: string;
     circulationCard?: string;
     insurancePolicy?: string;
+    maxCargoWeightKg?: number;
 }
 
 // Plantillas de asientos predeterminadas por tipo de vehículo
@@ -131,6 +134,7 @@ export class VehicleService {
             brand: data.brand || null,
             circulationCard: data.circulationCard || null,
             insurancePolicy: data.insurancePolicy || null,
+            maxCargoWeightKg: data.maxCargoWeightKg || null,
         });
 
         return this.repo.save(vehicle);

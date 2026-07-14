@@ -268,6 +268,8 @@ export const CreateVehicleSchema = z.object({
     brand: z.string().max(60).optional().nullable(),
     circulationCard: z.string().max(30).optional().nullable(),
     insurancePolicy: z.string().max(30).optional().nullable(),
+    /** Capacidad máxima de carga en kg para encomiendas (opcional). */
+    maxCargoWeightKg: z.coerce.number().min(0, 'maxCargoWeightKg no puede ser negativo').optional().nullable(),
 });
 
 export const UpdateVehicleSchema = z.object({
@@ -287,6 +289,7 @@ export const UpdateVehicleSchema = z.object({
     brand: z.string().max(60).optional().nullable(),
     circulationCard: z.string().max(30).optional().nullable(),
     insurancePolicy: z.string().max(30).optional().nullable(),
+    maxCargoWeightKg: z.coerce.number().min(0, 'maxCargoWeightKg no puede ser negativo').optional().nullable(),
 });
 
 // ─── Route / Station Schemas ──────────────────────────────────────────────────
@@ -337,7 +340,9 @@ export const UpdateRouteSchema = z.object({
 // ─── Parcel Schemas ───────────────────────────────────────────────────────────
 
 export const CreateParcelSchema = z.object({
-    tripId: z.string().uuid('tripId debe ser un UUID válido'),
+    // Opcional: sin tripId la encomienda queda "pendiente de asignar" (bandeja), y companyId es obligatorio.
+    tripId: z.string().uuid('tripId debe ser un UUID válido').optional(),
+    companyId: z.string().uuid('companyId debe ser un UUID válido').optional(),
     senderName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(150).trim(),
     senderDoc: z.string().min(6, 'El documento debe tener al menos 6 caracteres').max(20).trim(),
     receiverName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').max(150).trim(),
@@ -351,12 +356,25 @@ export const CreateParcelSchema = z.object({
 }).refine(
     (data) => data.startWaypointId !== data.endWaypointId,
     { message: 'El origen y el destino no pueden ser el mismo punto', path: ['endWaypointId'] }
+).refine(
+    (data) => !!data.tripId || !!data.companyId,
+    { message: 'Debes indicar un viaje, o una empresa para registrar la encomienda sin viaje asignado', path: ['tripId'] }
 );
 
 export const UpdateParcelStatusSchema = z.object({
     status: z.nativeEnum(ParcelStatus, {
         error: `Estado inválido. Use: ${Object.values(ParcelStatus).join(', ')}`,
     }),
+});
+
+export const ReassignParcelSchema = z.object({
+    tripId: z.string().uuid('tripId debe ser un UUID válido').nullable(),
+});
+
+export const PendingParcelsQuerySchema = z.object({
+    companyId: z.string().uuid('companyId debe ser un UUID válido'),
+    startWaypointId: z.string().uuid().optional(),
+    endWaypointId: z.string().uuid().optional(),
 });
 
 // ─── Search Schemas ───────────────────────────────────────────────────────────

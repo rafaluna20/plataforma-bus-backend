@@ -37,6 +37,10 @@ export class VehicleEntity {
     @Column({ type: 'int' })
     capacity: number;
 
+    /** Capacidad máxima de carga en kg para encomiendas (opcional). Permite advertir cuando un viaje se acerca al límite. */
+    @Column({ name: 'max_cargo_weight_kg', type: 'decimal', precision: 7, scale: 2, nullable: true })
+    maxCargoWeightKg: number | null;
+
     @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
     imageUrl: string | null;
 

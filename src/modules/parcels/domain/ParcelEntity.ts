@@ -9,6 +9,7 @@ export enum ParcelStatus {
     IN_TRANSIT = 'IN_TRANSIT',
     READY_FOR_PICKUP = 'READY_FOR_PICKUP',
     DELIVERED = 'DELIVERED',
+    CANCELLED = 'CANCELLED',
 }
 
 @Entity('parcels')
@@ -16,9 +17,14 @@ export class ParcelEntity {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @ManyToOne(() => TripEntity, { onDelete: 'CASCADE' })
+    /**
+     * Viaje asignado. Puede ser null: una encomienda "pendiente de asignar"
+     * vive en la bandeja de la empresa (buscable por origen/destino) hasta
+     * que el personal la asigne a un viaje concreto al momento del despacho.
+     */
+    @ManyToOne(() => TripEntity, { nullable: true, onDelete: 'CASCADE' })
     @JoinColumn({ name: 'trip_id' })
-    trip: TripEntity;
+    trip: TripEntity | null;
 
     @Column({ name: 'sender_name', type: 'varchar', length: 150 })
     senderName: string;
