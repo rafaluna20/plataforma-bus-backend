@@ -238,7 +238,7 @@ export class RouteService {
 
             if (data.name) route.name = data.name;
             if (data.serviceMode) route.serviceMode = data.serviceMode as unknown as ServiceMode;
-            if (data.polyline !== undefined) route.polyline = data.polyline || '';
+            if (data.polyline !== undefined) route.polyline = data.polyline || null;
             await queryRunner.manager.save(route);
 
             if (data.waypoints && data.waypoints.length > 0) {

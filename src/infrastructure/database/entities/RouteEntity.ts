@@ -18,8 +18,9 @@ export class RouteEntity {
     @Column({ type: 'enum', enum: ServiceMode, name: 'service_mode' })
     serviceMode: ServiceMode;
 
+    /** Trazado real de la ruta (JSON de puntos [lat,lng] dibujados a mano), para que el mapa siga la carretera en vez de conectar las paradas comerciales en línea recta. */
     @Column({ type: 'text', nullable: true })
-    polyline: string;
+    polyline: string | null;
 
     @CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
     createdAt: Date;
