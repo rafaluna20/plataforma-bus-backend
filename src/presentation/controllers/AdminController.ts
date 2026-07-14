@@ -25,6 +25,14 @@ const CreateStaffSchema = z.object({
     licenseNumber: z.string().max(30).optional(),
 });
 
+const UpdateStaffProfileSchema = z.object({
+    name: z.string().min(2).max(150).trim().optional(),
+    docType: z.enum(['DNI', 'CE', 'PASAPORTE', 'RUC']).optional(),
+    docNum: z.string().min(6).max(20).optional(),
+    phone: z.string().regex(/^[0-9+\-\s()]{7,20}$/).optional(),
+    licenseNumber: z.string().max(30).optional().nullable(),
+});
+
 const UpdateRoleSchema = z.object({
     role: z.nativeEnum(UserRole, { error: `Rol inválido. Use: ${Object.values(UserRole).join(', ')}` }),
     companyId: z.string().uuid('companyId debe ser un UUID válido').optional(),
@@ -177,6 +185,38 @@ router.patch('/users/:id/role', validateBody(UpdateRoleSchema), async (req: Requ
     } catch (error: any) {
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         if (error.message?.includes('SUPER_ADMIN') || error.message?.includes('propia empresa')) {
+            return res.status(403).json({ error: error.message });
+        }
+        next(error);
+    }
+});
+
+/**
+ * PATCH /api/v1/admin/users/:id
+ * Actualizar datos de perfil de un usuario de staff (nombre, teléfono,
+ * documento, N° de licencia). No cambia email/password/rol.
+ * SUPER_ADMIN puede editar a cualquiera; ADMIN solo a staff de su propia empresa.
+ */
+router.patch('/users/:id', validateBody(UpdateStaffProfileSchema), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.params.id as string;
+        const user = await adminService.updateUserProfile(userId, req.body, req.user?.role, req.user?.companyId);
+
+        await AuditLogService.log({
+            userId: req.user?.sub,
+            userEmail: req.user?.email,
+            action: 'UPDATE_USER_PROFILE',
+            entityName: 'UserEntity',
+            entityId: userId,
+            newValue: req.body,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+        });
+
+        return res.status(200).json({ message: 'Perfil actualizado exitosamente', user });
+    } catch (error: any) {
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        if (error.message?.includes('SUPER_ADMIN') || error.message?.includes('ADMIN') || error.message?.includes('propia empresa')) {
             return res.status(403).json({ error: error.message });
         }
         next(error);

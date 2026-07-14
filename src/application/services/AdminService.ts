@@ -27,6 +27,14 @@ export interface UpdateUserRoleDTO {
     actorCompanyId?: string;
 }
 
+export interface UpdateUserProfileDTO {
+    name?: string;
+    phone?: string;
+    docType?: string;
+    docNum?: string;
+    licenseNumber?: string; // Solo relevante para conductores
+}
+
 export interface PaginatedUsers {
     data: Omit<UserEntity, 'passwordHash' | 'refreshToken'>[];
     total: number;
@@ -216,6 +224,50 @@ export class AdminService {
 
         const saved = await this.userRepo.save(user);
         logger.info(`[Admin] Rol actualizado: ${saved.email} → ${data.role}`);
+
+        const { passwordHash: _, refreshToken: __, ...safeUser } = saved;
+        return safeUser;
+    }
+
+    /**
+     * Actualizar datos de perfil de un usuario de staff (nombre, teléfono,
+     * documento, N° de licencia). No permite cambiar email, password ni rol
+     * — eso pasa por sus propios endpoints dedicados.
+     *
+     * SEGURIDAD: mismas reglas que toggleUserStatus — un ADMIN solo puede
+     * editar staff de su propia empresa, nunca a otro ADMIN ni a un
+     * SUPER_ADMIN.
+     */
+    public async updateUserProfile(
+        userId: string,
+        data: UpdateUserProfileDTO,
+        actorRole?: UserRole,
+        actorCompanyId?: string,
+    ): Promise<Omit<UserEntity, 'passwordHash' | 'refreshToken'>> {
+        const user = await this.userRepo.findOne({ where: { id: userId }, relations: { company: true } });
+        if (!user) throw new Error('Usuario no encontrado');
+
+        if (user.role === UserRole.SUPER_ADMIN) {
+            throw new Error('No se puede editar una cuenta SUPER_ADMIN');
+        }
+
+        if (actorRole !== UserRole.SUPER_ADMIN) {
+            if (user.role === UserRole.ADMIN) {
+                throw new Error('No tienes permisos para modificar la cuenta de otro ADMIN');
+            }
+            if (!actorCompanyId || user.company?.id !== actorCompanyId) {
+                throw new Error('Solo puedes gestionar usuarios de tu propia empresa');
+            }
+        }
+
+        if (data.name !== undefined) user.name = data.name;
+        if (data.phone !== undefined) user.phone = data.phone;
+        if (data.docType !== undefined) user.docType = data.docType;
+        if (data.docNum !== undefined) user.docNum = data.docNum;
+        if (data.licenseNumber !== undefined) user.licenseNumber = data.licenseNumber || null;
+
+        const saved = await this.userRepo.save(user);
+        logger.info(`[Admin] Perfil actualizado: ${saved.email}`);
 
         const { passwordHash: _, refreshToken: __, ...safeUser } = saved;
         return safeUser;
