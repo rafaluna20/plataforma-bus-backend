@@ -262,6 +262,8 @@ export const CreateVehicleSchema = z.object({
         .min(1, 'La capacidad mínima es 1')
         .max(100, 'La capacidad máxima es 100'),
     imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+    /** Galería de fotos para el slider del panel de asientos (la primera = portada). */
+    imageUrls: z.array(z.string().url('Cada foto debe ser una URL válida')).max(6).optional().nullable(),
     // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
     brand: z.string().max(60).optional().nullable(),
     circulationCard: z.string().max(30).optional().nullable(),
@@ -281,6 +283,7 @@ export const UpdateVehicleSchema = z.object({
     capacity: z.number().int().min(1).max(100).optional(),
     isActive: z.boolean().optional(),
     imageUrl: z.string().url('imageUrl debe ser una URL válida').optional().nullable(),
+    imageUrls: z.array(z.string().url('Cada foto debe ser una URL válida')).max(6).optional().nullable(),
     brand: z.string().max(60).optional().nullable(),
     circulationCard: z.string().max(30).optional().nullable(),
     insurancePolicy: z.string().max(30).optional().nullable(),

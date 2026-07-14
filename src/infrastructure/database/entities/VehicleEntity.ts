@@ -40,6 +40,10 @@ export class VehicleEntity {
     @Column({ name: 'image_url', type: 'varchar', length: 500, nullable: true })
     imageUrl: string | null;
 
+    /** Galería de fotos del vehículo (se muestran en un slider); imageUrl guarda la primera como portada. */
+    @Column({ name: 'image_urls', type: 'simple-array', nullable: true })
+    imageUrls: string[] | null;
+
     @Column({ name: 'is_active', type: 'boolean', default: true })
     isActive: boolean;
 

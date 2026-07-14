@@ -10,6 +10,8 @@ export interface CreateVehicleDTO {
     seatTemplate: any; // JSON configurable de asientos
     capacity: number;
     imageUrl?: string;
+    /** Galería de fotos (se muestran en un slider); la primera es la portada. */
+    imageUrls?: string[];
     // ─── Datos para el Manifiesto de Pasajeros (SUNAT/MTC) ────────────────────
     brand?: string;
     circulationCard?: string;
@@ -24,6 +26,7 @@ export interface UpdateVehicleDTO {
     capacity?: number;
     isActive?: boolean;
     imageUrl?: string;
+    imageUrls?: string[];
     brand?: string;
     circulationCard?: string;
     insurancePolicy?: string;
@@ -124,6 +127,7 @@ export class VehicleService {
             seatTemplate,
             capacity: data.capacity,
             imageUrl: data.imageUrl || null,
+            imageUrls: data.imageUrls?.length ? data.imageUrls : null,
             brand: data.brand || null,
             circulationCard: data.circulationCard || null,
             insurancePolicy: data.insurancePolicy || null,
