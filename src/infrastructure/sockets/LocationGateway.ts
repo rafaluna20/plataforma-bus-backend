@@ -60,6 +60,7 @@ async function canViewTrip(user: TokenPayload, tripId: string): Promise<boolean>
 
 export class LocationGateway {
     private io: Server;
+    private lastKnownLocations = new Map<string, any>();
 
     constructor(io: Server) {
         this.io = io;
@@ -159,6 +160,12 @@ export class LocationGateway {
                 const room = `trip_${tripId}`;
                 socket.join(room);
                 logger.info(`[Socket] Cliente ${socket.id} (${user.email}) se unió a la sala: ${room}`);
+
+                // Emitir inmediatamente la última ubicación conocida al cliente que acaba de unirse
+                const lastLoc = this.lastKnownLocations.get(tripId);
+                if (lastLoc) {
+                    socket.emit('location_updated', lastLoc);
+                }
             });
 
             // El pasajero abandona la sala
@@ -223,7 +230,7 @@ export class LocationGateway {
 
                 // 5. Reenviar a todos en la sala (excepto al que envía)
                 const room = `trip_${data.tripId}`;
-                socket.to(room).emit('location_updated', {
+                const locationUpdate = {
                     tripId: data.tripId,
                     lat: data.lat,
                     lng: data.lng,
@@ -231,7 +238,12 @@ export class LocationGateway {
                     bearing: data.bearing || 0,
                     timestamp: new Date().toISOString(),
                     driverId: payload.sub,
-                });
+                };
+
+                // Guardar en la caché interna
+                this.lastKnownLocations.set(data.tripId, locationUpdate);
+
+                socket.to(room).emit('location_updated', locationUpdate);
 
                 logger.info(`[Socket] GPS actualizado: tripId=${data.tripId} | lat=${data.lat} | lng=${data.lng} | driver=${payload.email}`);
             });
