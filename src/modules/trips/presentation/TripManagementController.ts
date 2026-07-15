@@ -3,6 +3,7 @@ import { TripManagementService } from '../application/TripManagementService';
 import { authorize } from '../../../presentation/middlewares/auth.middleware';
 import { UserRole } from '../../../infrastructure/database/entities/UserEntity';
 import { validateBody, CreateTripSchema, UpdateTripSchema, UpdateTripStatusSchema } from '../../../presentation/validators/schemas';
+import { emitToTrip, setLastKnownLocation } from '../../../infrastructure/sockets/SocketBus';
 
 const router = Router();
 const tripMgmtService = new TripManagementService();
@@ -102,6 +103,57 @@ router.patch('/:id/status', validateBody(UpdateTripStatusSchema), async (req: Re
             return res.status(403).json({ error: error.message });
         }
         if (error.message?.includes('no está autorizado')) return res.status(403).json({ error: error.message });
+        if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
+        next(error);
+    }
+});
+
+/**
+ * POST /api/v1/management/trips/:id/location
+ * Vía REST para el GPS del conductor — usada por la app móvil cuando corre en
+ * SEGUNDO PLANO (las tareas en background de Expo no mantienen un socket vivo)
+ * y como respaldo si el socket se cae en carretera. Reenvía la posición a la
+ * misma sala `trip_{tripId}` de Socket.io que consume la web ("Ubicación en
+ * Tiempo Real"), con el mismo shape que el evento del socket.
+ * Solo el DRIVER asignado al viaje (o ADMIN/SUPER_ADMIN de la empresa).
+ */
+router.post('/:id/location', authorize(UserRole.DRIVER, UserRole.ADMIN, UserRole.SUPER_ADMIN), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const tripId = req.params.id as string;
+        const { lat, lng, speed, bearing } = req.body ?? {};
+
+        if (typeof lat !== 'number' || typeof lng !== 'number') {
+            return res.status(400).json({ error: 'Payload de ubicación inválido: lat y lng numéricos son requeridos' });
+        }
+        // Rango razonable para Perú (mismo criterio que LocationGateway)
+        if (lat < -20 || lat > 2 || lng < -85 || lng > -65) {
+            return res.status(400).json({ error: 'Coordenadas fuera del rango permitido' });
+        }
+
+        if (req.user?.role === UserRole.DRIVER) {
+            const assigned = await tripMgmtService.isDriverAssignedToTrip(req.user.sub, tripId);
+            if (!assigned) return res.status(403).json({ error: 'No estás asignado a este viaje' });
+        } else {
+            // ADMIN: solo viajes de su propia empresa (SUPER_ADMIN pasa libre)
+            await tripMgmtService.findById(tripId, req.user?.role, req.user?.companyId);
+        }
+
+        const locationUpdate = {
+            tripId,
+            lat,
+            lng,
+            speed: typeof speed === 'number' ? speed : 0,
+            bearing: typeof bearing === 'number' ? bearing : 0,
+            timestamp: new Date().toISOString(),
+            driverId: req.user!.sub,
+        };
+
+        setLastKnownLocation(tripId, locationUpdate);
+        emitToTrip(tripId, 'location_updated', locationUpdate);
+
+        return res.status(200).json({ ok: true });
+    } catch (error: any) {
+        if (error.message?.includes('otra empresa')) return res.status(403).json({ error: error.message });
         if (error.message?.includes('no encontrado')) return res.status(404).json({ error: error.message });
         next(error);
     }

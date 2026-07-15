@@ -137,8 +137,13 @@ router.post('/refresh', async (req: Request, res: Response, next: NextFunction) 
 
         setAuthCookies(res, tokens);
 
+        // Los tokens también van en el body para clientes móviles (la app del
+        // conductor guarda la sesión en AsyncStorage y no puede leer cookies
+        // httpOnly) — mismo trato que ya da /login.
         return res.status(200).json({
             user: tokens.user,
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
         });
     } catch (error: any) {
         if (error.message?.includes('inválido') || error.message?.includes('expirado') || error.message?.includes('revocado')) {

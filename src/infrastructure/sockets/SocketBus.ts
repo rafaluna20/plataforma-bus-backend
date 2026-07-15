@@ -26,3 +26,29 @@ export function emitToTrip(tripId: string, event: string, payload: Record<string
         logger.warn(`[SocketBus] No se pudo emitir evento "${event}" para el viaje ${tripId}: ${error.message}`);
     }
 }
+
+// ─── Última ubicación conocida por viaje ──────────────────────────────────────
+// Compartida entre LocationGateway (GPS por socket) y el endpoint REST de
+// ubicación (GPS en segundo plano desde la app del conductor), para que quien
+// se una a la sala después reciba de inmediato la última posición sin importar
+// por cuál de las dos vías llegó.
+
+export interface TripLocationUpdate {
+    tripId: string;
+    lat: number;
+    lng: number;
+    speed: number;
+    bearing: number;
+    timestamp: string;
+    driverId: string;
+}
+
+const lastKnownLocations = new Map<string, TripLocationUpdate>();
+
+export function setLastKnownLocation(tripId: string, update: TripLocationUpdate): void {
+    lastKnownLocations.set(tripId, update);
+}
+
+export function getLastKnownLocation(tripId: string): TripLocationUpdate | undefined {
+    return lastKnownLocations.get(tripId);
+}

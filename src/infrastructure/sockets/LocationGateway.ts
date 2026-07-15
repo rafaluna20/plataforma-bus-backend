@@ -10,6 +10,7 @@ import { TripManagementService } from '../../modules/trips';
 import { AppDataSource } from '../database/data-source';
 import { BookingEntity, PaymentStatus } from '../../modules/bookings/domain/BookingEntity';
 import { TripEntity } from '../../modules/trips/domain/TripEntity';
+import { setLastKnownLocation, getLastKnownLocation } from './SocketBus';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -60,7 +61,6 @@ async function canViewTrip(user: TokenPayload, tripId: string): Promise<boolean>
 
 export class LocationGateway {
     private io: Server;
-    private lastKnownLocations = new Map<string, any>();
 
     constructor(io: Server) {
         this.io = io;
@@ -161,8 +161,10 @@ export class LocationGateway {
                 socket.join(room);
                 logger.info(`[Socket] Cliente ${socket.id} (${user.email}) se unió a la sala: ${room}`);
 
-                // Emitir inmediatamente la última ubicación conocida al cliente que acaba de unirse
-                const lastLoc = this.lastKnownLocations.get(tripId);
+                // Emitir inmediatamente la última ubicación conocida al cliente que
+                // acaba de unirse (sin importar si llegó por socket o por el
+                // endpoint REST de segundo plano de la app del conductor).
+                const lastLoc = getLastKnownLocation(tripId);
                 if (lastLoc) {
                     socket.emit('location_updated', lastLoc);
                 }
@@ -240,8 +242,8 @@ export class LocationGateway {
                     driverId: payload.sub,
                 };
 
-                // Guardar en la caché interna
-                this.lastKnownLocations.set(data.tripId, locationUpdate);
+                // Guardar en la caché compartida (misma que usa el endpoint REST)
+                setLastKnownLocation(data.tripId, locationUpdate);
 
                 socket.to(room).emit('location_updated', locationUpdate);
 
