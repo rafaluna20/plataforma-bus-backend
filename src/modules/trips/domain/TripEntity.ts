@@ -5,6 +5,7 @@ import { UserEntity } from '../../../infrastructure/database/entities/UserEntity
 
 export enum TripStatus {
     SCHEDULED = 'SCHEDULED',
+    DISPATCHING = 'DISPATCHING', // En ruta al terminal (conductor)
     BOARDING = 'BOARDING',
     IN_TRANSIT = 'IN_TRANSIT',
     COMPLETED = 'COMPLETED',

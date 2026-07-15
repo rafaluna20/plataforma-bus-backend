@@ -32,6 +32,7 @@ export interface UpdateTripStatusDTO {
 // Roles autorizados a establecer cada estado destino. AGENCY_SELLER puede autorizar
 // el abordaje (BOARDING/IN_TRANSIT) pero no confirmar llegada (COMPLETED) ni cancelar.
 const ROLES_ALLOWED_PER_STATUS: Partial<Record<TripStatus, UserRole[]>> = {
+    [TripStatus.DISPATCHING]: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER],
     [TripStatus.BOARDING]:   [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER],
     [TripStatus.IN_TRANSIT]: [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER, UserRole.AGENCY_SELLER],
     [TripStatus.COMPLETED]:  [UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DRIVER],
@@ -303,7 +304,8 @@ export class TripManagementService {
 
         // Validar transiciones de estado válidas
         const validTransitions: Record<TripStatus, TripStatus[]> = {
-            [TripStatus.SCHEDULED]: [TripStatus.BOARDING, TripStatus.CANCELLED],
+            [TripStatus.SCHEDULED]: [TripStatus.DISPATCHING, TripStatus.BOARDING, TripStatus.CANCELLED],
+            [TripStatus.DISPATCHING]: [TripStatus.BOARDING, TripStatus.CANCELLED],
             [TripStatus.BOARDING]: [TripStatus.IN_TRANSIT, TripStatus.CANCELLED],
             [TripStatus.IN_TRANSIT]: [TripStatus.COMPLETED],
             [TripStatus.COMPLETED]: [],
